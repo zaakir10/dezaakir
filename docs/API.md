@@ -88,8 +88,13 @@ Readiness probe. Returns `200 { "success": true, "data": { "status": "ready" } }
 | `POST /api/admin/media/upload` | Admin + MFA + CSRF | Verifies magic-byte image signatures (PNG, JPEG, GIF, WebP, AVIF), blocks SVGs/executables/polyglots/MIME mismatches, uploads to Cloudinary, and registers a `Media` document. |
 | `DELETE /api/admin/media/:id` | Admin + MFA + CSRF | Deletes an unused media asset (`409 CONFLICT` if referenced by a blog or project). |
 
-## Planned (later phases)
+### Admin Overview, User Management & Audit Logs (`/api/admin`)
 
-| Group | Endpoints | Phase |
+| Method & Path | Auth | Description |
 |---|---|---|
-| Admin users & overview | `GET /api/admin/overview`, `GET /api/admin/users`, `GET /api/admin/users/:id`, `PATCH /api/admin/users/:id/status`, `GET /api/admin/audit-logs` | 8 |
+| `GET /api/admin/overview` | Admin + MFA | Returns summary counts (blogs, projects, users, contact messages, media) and recent `AuditLog` entries. |
+| `GET /api/admin/users` | Admin + MFA | Lists registered users with pagination, search (`name`/`email`), `role`, `status`, and `emailVerified` filters. Never exposes `passwordHash` or MFA secrets. |
+| `GET /api/admin/users/:id` | Admin + MFA | Returns user profile, active sessions (without token hashes), and recent audit logs for that user. |
+| `PATCH /api/admin/users/:id/status` | Admin + MFA + CSRF | Updates account status (`ACTIVE` \| `SUSPENDED` \| `PENDING`) or `emailVerified`, automatically revokes active sessions on suspension, and prevents admin self-lockout. |
+| `DELETE /api/admin/users/:id/sessions` | Admin + MFA + CSRF | Revokes all active sessions for a specific user. |
+| `GET /api/admin/audit-logs` | Admin + MFA | Lists audit logs with pagination and `category`/`outcome`/`search` filters. |

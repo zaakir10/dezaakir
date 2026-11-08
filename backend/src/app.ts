@@ -12,6 +12,7 @@ import { authRouter } from "./routes/auth.routes.js";
 import { adminBlogRouter, blogRouter } from "./routes/blog.routes.js";
 import { adminProjectRouter, projectRouter } from "./routes/project.routes.js";
 import { adminMediaRouter } from "./routes/media.routes.js";
+import { adminRouter } from "./routes/admin.routes.js";
 import { categoriesRouter, tagsRouter } from "./routes/taxonomy.routes.js";
 import { adminMessagesRouter, contactRouter } from "./routes/contact.routes.js";
 import { adminSettingsRouter, settingsRouter } from "./routes/settings.routes.js";
@@ -98,6 +99,7 @@ export function createApp() {
   app.use("/api/admin/media", adminMediaRouter);
   app.use("/api/admin/messages", adminMessagesRouter);
   app.use("/api/admin/settings", adminSettingsRouter);
+  app.use("/api/admin", adminRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
