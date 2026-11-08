@@ -4,9 +4,12 @@ import cors from "cors";
 import { env, isProduction } from "./config/env.js";
 import { requestId } from "./middleware/requestId.js";
 import { loadSession } from "./middleware/auth.js";
+import { sanitizeInput } from "./middleware/sanitizeInput.js";
+import { csrfProtection } from "./middleware/csrf.js";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 import { healthRouter } from "./routes/health.routes.js";
 import { authRouter } from "./routes/auth.routes.js";
+import { adminMessagesRouter, contactRouter } from "./routes/contact.routes.js";
 import { sendError } from "./utils/apiResponse.js";
 
 const ALLOWED_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"];
@@ -66,10 +69,14 @@ export function createApp() {
 
   app.use(express.json({ limit: "100kb", strict: true }));
   app.use(express.urlencoded({ extended: false, limit: "20kb" }));
+  app.use(sanitizeInput);
   app.use(loadSession);
+  app.use(csrfProtection);
 
   app.use("/api/health", healthRouter);
   app.use("/api/auth", authRouter);
+  app.use("/api/contact", contactRouter);
+  app.use("/api/admin/messages", adminMessagesRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

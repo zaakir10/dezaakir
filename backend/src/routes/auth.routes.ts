@@ -17,6 +17,13 @@ import {
   verifyEmailHandler,
 } from "../controllers/auth.controller.js";
 import { requireAuth } from "../middleware/auth.js";
+import {
+  loginLimiter,
+  otpResendLimiter,
+  otpVerifyLimiter,
+  passwordResetLimiter,
+  registerLimiter,
+} from "../middleware/rateLimit.js";
 import { validate } from "../middleware/validate.js";
 import {
   ChangePasswordSchema,
@@ -34,13 +41,18 @@ import {
 export const authRouter = Router();
 
 // Public authentication & email verification routes
-authRouter.post("/register", validate({ body: RegisterSchema }), registerHandler);
-authRouter.post("/verify-email", validate({ body: VerifyEmailSchema }), verifyEmailHandler);
-authRouter.post("/resend-verification", validate({ body: ResendVerificationSchema }), resendVerificationHandler);
-authRouter.post("/login", validate({ body: LoginSchema }), loginHandler);
+authRouter.post("/register", registerLimiter, validate({ body: RegisterSchema }), registerHandler);
+authRouter.post("/verify-email", otpVerifyLimiter, validate({ body: VerifyEmailSchema }), verifyEmailHandler);
+authRouter.post(
+  "/resend-verification",
+  otpResendLimiter,
+  validate({ body: ResendVerificationSchema }),
+  resendVerificationHandler,
+);
+authRouter.post("/login", loginLimiter, validate({ body: LoginSchema }), loginHandler);
 authRouter.post("/logout", logoutHandler);
-authRouter.post("/forgot-password", validate({ body: ForgotPasswordSchema }), forgotPasswordHandler);
-authRouter.post("/reset-password", validate({ body: ResetPasswordSchema }), resetPasswordHandler);
+authRouter.post("/forgot-password", passwordResetLimiter, validate({ body: ForgotPasswordSchema }), forgotPasswordHandler);
+authRouter.post("/reset-password", passwordResetLimiter, validate({ body: ResetPasswordSchema }), resetPasswordHandler);
 
 // Authenticated account & session management routes
 authRouter.get("/me", requireAuth, meHandler);

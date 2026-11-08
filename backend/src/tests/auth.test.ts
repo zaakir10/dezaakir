@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import request from "supertest";
 import { createApp } from "../app.js";
+import { resetRateLimits } from "../middleware/rateLimit.js";
 import { EmailVerification, PasswordResetToken, Session, User } from "../models/index.js";
 import { bootstrapAdmin } from "../scripts/create-admin.js";
 import { clearCapturedEmails, getCapturedEmails } from "../services/email.service.js";
@@ -19,6 +20,7 @@ const validRegistration = {
 
 beforeAll(startTestDatabase, 300_000);
 afterEach(async () => {
+  resetRateLimits();
   clearCapturedEmails();
   await clearTestDatabase();
 });
@@ -243,7 +245,10 @@ describe("Phase 3: Login, Sessions, Password Reset & Admin MFA", () => {
     expect(sessionsRes.body.data.sessions[0].current).toBe(true);
 
     // Logout invalidates the session (Test Case #17)
-    const logoutRes = await request(app).post("/api/auth/logout").set("Cookie", cookieHeader);
+    const logoutRes = await request(app)
+      .post("/api/auth/logout")
+      .set("Cookie", cookieHeader)
+      .set("X-CSRF-Token", loginRes.body.data.csrfToken);
     expect(logoutRes.status).toBe(200);
 
     const afterLogout = await request(app).get("/api/auth/me").set("Cookie", cookieHeader);

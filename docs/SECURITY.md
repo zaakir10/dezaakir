@@ -35,9 +35,11 @@
 | Auth | 6-digit CSPRNG Email OTP (keyed HMAC-SHA256, 10m expiry, 60s resend cooldown, 5 attempt limit, single-use) via Gmail SMTP TLS | 3 | ✅ |
 | Auth | Single-use hashed password reset tokens (30m expiry) + automatic revocation of all existing sessions | 3 | ✅ |
 | Auth | Admin TOTP MFA (RFC 6238, AES-256-GCM encrypted secret at rest, 8 single-use hashed recovery codes) + CLI `create-admin` bootstrap | 3 | ✅ |
-| CSRF | Synchronizer token + Origin check | 4 | ⏳ |
-| Rate limits | Login, OTP, reset, contact | 4 | ⏳ |
-| XSS | Rich text sanitized on write (allow-list) and on render | 6 | ⏳ |
+| CSRF | Synchronizer token (`X-CSRF-Token` verified in constant time against `session.csrfTokenHash`) + `Origin`/`Referer` check | 4 | ✅ |
+| Rate limits | IP + email sliding-window limiters on registration, OTP verify/resend, login, password reset, and contact form | 4 | ✅ |
+| Injection | Recursive NoSQL operator & prototype pollution guard (`sanitizeInput`) with suspicious request audit logging | 4 | ✅ |
+| XSS | Allow-list rich HTML sanitizer (`sanitizeRichHtml`) & plain-text entity escaping (`sanitizePlainText`) | 4 | ✅ |
+| Contact | Honeypot spam protection, CR/LF header-injection prevention, IP hashing, and Admin MFA-gated review | 4 | ✅ |
 | Uploads | Magic-byte check, size limits, no SVG, signed Cloudinary uploads | 7 | ⏳ |
 | Logging | Auth events, admin audit log, permission denials | 3–8 | ⏳ |
 | Backups | Atlas backups + tested `mongodump`/`mongorestore` procedure | 10 | ⏳ |

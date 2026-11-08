@@ -39,6 +39,14 @@ Readiness probe. Returns `200 { "success": true, "data": { "status": "ready" } }
 | `POST /api/auth/mfa/setup` | Auth | Generates an AES-256-GCM encrypted TOTP secret and returns `{ secret, otpauthUri }`. |
 | `POST /api/auth/mfa/enable` | Auth | Verifies a 6-digit TOTP code, enables MFA on the account, marks the session `mfaVerified=true`, and returns 8 single-use recovery codes. |
 
+### Contact (`/api/contact` & `/api/admin/messages`)
+
+| Method & Path | Auth | Description |
+|---|---|---|
+| `POST /api/contact` | Public | Validates contact submission, applies honeypot + IP/email rate limiting (5 / 15m), escapes XSS payloads, and stores message in MongoDB. |
+| `GET /api/admin/messages` | Admin + MFA | Lists contact messages with pagination (`page`, `limit`) and optional `status` (`NEW` \| `READ` \| `ARCHIVED`) filter. |
+| `PATCH /api/admin/messages/:id` | Admin + MFA + CSRF | Updates a contact message's status (`NEW` \| `READ` \| `ARCHIVED`) and records an admin audit log. |
+
 ## Planned (later phases)
 
 | Group | Endpoints | Phase |
