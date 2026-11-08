@@ -1,0 +1,19 @@
+{
+  "name": "dezaakir-portfolio",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev:backend": "bun --cwd backend run dev",
+    "dev:frontend": "bun --cwd frontend run dev",
+    "typecheck": "bun --cwd backend run typecheck && bun --cwd frontend run typecheck",
+    "test": "bun --cwd backend run test",
+    "build": "bun --cwd backend run typecheck && bun --cwd frontend run build"
+  },
+  "engines": {
+    "bun": ">=1.2.0"
+  }
+}

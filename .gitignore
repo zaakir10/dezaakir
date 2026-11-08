@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+
+# Environment & secrets — NEVER commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+recovery-codes*.txt
+
+# Build output
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# Logs
+*.log
+logs/
+
+# Test artifacts
+coverage/
+playwright-report/
+test-results/
+
+# Backups (never commit database dumps)
+backups/
+*.archive
+*.bson
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/*
+!.vscode/extensions.json
+.idea/
