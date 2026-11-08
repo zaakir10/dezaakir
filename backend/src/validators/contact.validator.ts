@@ -24,6 +24,7 @@ export const ListMessagesQuerySchema = z.strictObject({
   page: z.coerce.number().int().min(1).max(10_000).optional(),
   limit: z.coerce.number().int().min(1).max(50).optional(),
   status: z.enum(MESSAGE_STATUSES).optional(),
+  search: z.string().trim().max(100).optional(),
 });
 
 export const MessageIdParamSchema = z.strictObject({

@@ -28,6 +28,8 @@ interface SocialLinks {
   github?: string;
   linkedin?: string;
   x?: string;
+  facebook?: string;
+  tiktok?: string;
   youtube?: string;
   website?: string;
   email?: string;
@@ -38,6 +40,7 @@ export interface ISiteSettings {
   _id: Types.ObjectId;
   key: typeof SETTINGS_KEY;
   siteTitle: string;
+  authorName?: string;
   tagline: string;
   heroTitle: string;
   heroDescription: string;
@@ -67,6 +70,7 @@ const SiteSettingsSchema = new Schema<ISiteSettings, SiteSettingsModel>(
   {
     key: { type: String, enum: [SETTINGS_KEY], default: SETTINGS_KEY, required: true, immutable: true },
     siteTitle: { ...text(80, true), default: "Dezaakir" },
+    authorName: { ...text(80), default: "Dezaakir" },
     tagline: { ...text(160), default: "Full-Stack Developer · AI · Modern Technology" },
     heroTitle: { ...text(160), default: "Building secure, modern software." },
     heroDescription: {
@@ -75,12 +79,14 @@ const SiteSettingsSchema = new Schema<ISiteSettings, SiteSettingsModel>(
     },
     biography: { ...text(5000), default: "" },
     profileImage: { type: ImageSchema },
-    cvUrl: httpsUrl,
+    cvUrl: { type: String, trim: true, maxlength: 2048, match: /^(\/[a-zA-Z0-9._/-]+|https:\/\/[^\s<>"']+)$/i },
     location: text(100),
     socialLinks: {
       github: httpsUrl,
       linkedin: httpsUrl,
       x: httpsUrl,
+      facebook: httpsUrl,
+      tiktok: httpsUrl,
       youtube: httpsUrl,
       website: httpsUrl,
       email: { type: String, trim: true, lowercase: true, maxlength: 254, match: /^[^\s@]+@[^\s@]+\.[^\s@]+$/ },

@@ -1,5 +1,6 @@
 import type { RequestHandler } from "express";
 import {
+  deleteContactMessage,
   listContactMessages,
   submitContactMessage,
   updateContactMessageStatus,
@@ -31,4 +32,10 @@ export const updateMessageStatusHandler: RequestHandler = async (req, res) => {
     req,
   );
   sendSuccess(res, { message });
+};
+
+export const deleteMessageHandler: RequestHandler = async (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  const result = await deleteContactMessage(String(req.params.id), req);
+  sendSuccess(res, result);
 };

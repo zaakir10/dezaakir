@@ -15,6 +15,8 @@ export const CreateCategorySchema = z.strictObject({
   description: z.string().trim().max(300).optional(),
 });
 
+export const UpdateCategorySchema = CreateCategorySchema.partial().strict();
+
 export const ListCategoriesQuerySchema = z.strictObject({
   type: z.enum(CATEGORY_TYPES).optional(),
 });
@@ -30,9 +32,13 @@ export const CreateTagSchema = z.strictObject({
     .optional(),
 });
 
+export const UpdateTagSchema = CreateTagSchema.partial().strict();
+
 export const ObjectIdParamSchema = z.strictObject({
   id: z.string().regex(/^[a-f\d]{24}$/i, "Invalid identifier"),
 });
 
 export type CreateCategoryInput = z.infer<typeof CreateCategorySchema>;
+export type UpdateCategoryInput = z.infer<typeof UpdateCategorySchema>;
 export type CreateTagInput = z.infer<typeof CreateTagSchema>;
+export type UpdateTagInput = z.infer<typeof UpdateTagSchema>;

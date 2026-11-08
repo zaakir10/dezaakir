@@ -1,5 +1,6 @@
 import type { RequestHandler } from "express";
 import {
+  bulkBlogAction,
   createBlogArticle,
   deleteBlogArticle,
   getAdminBlogById,
@@ -9,7 +10,12 @@ import {
   updateBlogArticle,
 } from "../services/blog.service.js";
 import { sendSuccess } from "../utils/apiResponse.js";
-import type { CreateBlogInput, ListBlogsQuery, UpdateBlogInput } from "../validators/blog.validator.js";
+import type {
+  BulkBlogActionInput,
+  CreateBlogInput,
+  ListBlogsQuery,
+  UpdateBlogInput,
+} from "../validators/blog.validator.js";
 
 export const listPublicBlogsHandler: RequestHandler = async (req, res) => {
   res.setHeader("Cache-Control", "public, max-age=30, stale-while-revalidate=120");
@@ -54,4 +60,10 @@ export const deleteBlogHandler: RequestHandler = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   await deleteBlogArticle(String(req.params.id), req);
   sendSuccess(res, { message: "Article deleted successfully" });
+};
+
+export const bulkBlogActionHandler: RequestHandler = async (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  const result = await bulkBlogAction(req.body as BulkBlogActionInput, req);
+  sendSuccess(res, result);
 };

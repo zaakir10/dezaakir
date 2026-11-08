@@ -145,10 +145,19 @@ export async function listAdminProjects(query: ListProjectsQuery) {
 
   const skip = (query.page - 1) * query.limit;
 
+  let sortOrder: Record<string, 1 | -1> = { order: 1, createdAt: -1 };
+  if (query.sort === "oldest") {
+    sortOrder = { createdAt: 1 };
+  } else if (query.sort === "title") {
+    sortOrder = { title: 1 };
+  } else if (query.sort === "newest") {
+    sortOrder = { createdAt: -1 };
+  }
+
   const [projects, total] = await Promise.all([
     Project.find(filter)
       .populate("category", "name slug")
-      .sort({ order: 1, createdAt: -1 })
+      .sort(sortOrder)
       .skip(skip)
       .limit(query.limit)
       .lean(),

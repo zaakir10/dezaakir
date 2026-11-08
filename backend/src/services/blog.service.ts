@@ -5,7 +5,12 @@ import type { PaginationMeta } from "../utils/apiResponse.js";
 import { escapeRegex, isObjectId, normalizePage, toObjectId, trusted } from "../utils/query.js";
 import { sanitizePlainText, sanitizeRichHtml } from "../utils/sanitizeHtml.js";
 import { htmlToPlainText, readingTimeMinutes, slugify } from "../utils/text.js";
-import type { CreateBlogInput, ListBlogsQuery, UpdateBlogInput } from "../validators/blog.validator.js";
+import type {
+  BulkBlogActionInput,
+  CreateBlogInput,
+  ListBlogsQuery,
+  UpdateBlogInput,
+} from "../validators/blog.validator.js";
 import { recordAudit } from "./audit.service.js";
 
 async function ensureUniqueBlogSlug(baseSlug: string, excludeId?: string): Promise<string> {
@@ -167,6 +172,16 @@ export async function listAdminBlogs(query: ListBlogsQuery): Promise<{
   if (query.featured !== undefined) {
     filter.featured = query.featured;
   }
+  if (query.category) {
+    if (isObjectId(query.category)) {
+      filter.category = toObjectId(query.category);
+    } else {
+      const cat = await Category.findOne({ type: "BLOG", slug: query.category.toLowerCase() }).lean();
+      if (cat) {
+        filter.category = cat._id;
+      }
+    }
+  }
   if (query.search) {
     const safePattern = new RegExp(escapeRegex(query.search), "i");
     filter.$or = trusted([
@@ -175,10 +190,19 @@ export async function listAdminBlogs(query: ListBlogsQuery): Promise<{
     ]);
   }
 
+  let sortOrder: Record<string, 1 | -1> = { updatedAt: -1 };
+  if (query.sort === "oldest") {
+    sortOrder = { createdAt: 1 };
+  } else if (query.sort === "title") {
+    sortOrder = { title: 1 };
+  } else if (query.sort === "newest") {
+    sortOrder = { createdAt: -1 };
+  }
+
   const [total, docs] = await Promise.all([
     Blog.countDocuments(filter),
     Blog.find(filter)
-      .sort({ updatedAt: -1 })
+      .sort(sortOrder)
       .skip((page - 1) * limit)
       .limit(limit)
       .populate("author", "name email")
@@ -361,4 +385,42 @@ export async function deleteBlogArticle(id: string, req?: Request): Promise<void
     req,
     metadata: { slug: deleted.slug },
   });
+}
+
+export async function bulkBlogAction(
+  input: BulkBlogActionInput,
+  req?: Request,
+): Promise<{ affected: number; action: string }> {
+  const objectIds = input.ids.map((id) => toObjectId(id));
+  let affected = 0;
+
+  if (input.action === "DELETE") {
+    const res = await Blog.deleteMany({ _id: trusted({ $in: objectIds }) });
+    affected = res.deletedCount;
+  } else if (input.action === "PUBLISH") {
+    const res = await Blog.updateMany(
+      { _id: trusted({ $in: objectIds }) },
+      { $set: { status: "PUBLISHED", publishedAt: new Date() } },
+    );
+    affected = res.modifiedCount;
+  } else if (input.action === "DRAFT") {
+    const res = await Blog.updateMany(
+      { _id: trusted({ $in: objectIds }) },
+      { $set: { status: "DRAFT" } },
+    );
+    affected = res.modifiedCount;
+  }
+
+  await recordAudit({
+    category: "ADMIN",
+    action: "admin.blog_bulk_action",
+    outcome: "SUCCESS",
+    actor: req?.user?._id,
+    actorEmail: req?.user?.email,
+    targetType: "Blog",
+    req,
+    metadata: { action: input.action, count: affected },
+  });
+
+  return { affected, action: input.action };
 }

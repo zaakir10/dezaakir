@@ -5,7 +5,7 @@ import { Blog, Media, Project } from "../models/index.js";
 import { AppError } from "../utils/AppError.js";
 import type { PaginationMeta } from "../utils/apiResponse.js";
 import { verifyUploadedImage } from "../utils/fileValidation.js";
-import { normalizePage, toObjectId } from "../utils/query.js";
+import { escapeRegex, normalizePage, toObjectId, trusted } from "../utils/query.js";
 import { sanitizePlainText } from "../utils/sanitizeHtml.js";
 import { recordAudit } from "./audit.service.js";
 
@@ -160,7 +160,7 @@ export async function uploadAndRegisterImage(
   return mediaDoc.toJSON() as unknown as Record<string, unknown>;
 }
 
-export async function listMediaAssets(query: { page?: number; limit?: number; folder?: string }): Promise<{
+export async function listMediaAssets(query: { page?: number; limit?: number; folder?: string; search?: string }): Promise<{
   media: Record<string, unknown>[];
   meta: PaginationMeta;
 }> {
@@ -168,6 +168,15 @@ export async function listMediaAssets(query: { page?: number; limit?: number; fo
   const filter: Record<string, unknown> = {};
   if (query.folder) {
     filter.folder = assertAllowedFolder(query.folder);
+  }
+  if (query.search) {
+    const safePattern = new RegExp(escapeRegex(query.search), "i");
+    filter.$or = trusted([
+      { publicId: trusted({ $regex: safePattern }) },
+      { alt: trusted({ $regex: safePattern }) },
+      { caption: trusted({ $regex: safePattern }) },
+      { format: trusted({ $regex: safePattern }) },
+    ]);
   }
 
   const [total, docs] = await Promise.all([

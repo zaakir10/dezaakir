@@ -153,6 +153,38 @@ export async function apiRequest<T>(
   return { data: body.data as T, meta: body.meta };
 }
 
+export const apiFetch = apiRequest;
+
+export async function fileToBase64DataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
+}
+
+export async function apiUploadMediaFile<T = { media: import("@/types").MediaItem }>(
+  file: File,
+  options: {
+    folder: "blogs" | "projects" | "profile" | "general";
+    alt: string;
+    caption?: string;
+  }
+): Promise<ApiSuccess<T>> {
+  const fileBase64 = await fileToBase64DataUrl(file);
+  return apiRequest<T>("/api/admin/media/upload", {
+    method: "POST",
+    body: JSON.stringify({
+      fileBase64,
+      mimeType: file.type || "image/png",
+      folder: options.folder,
+      alt: options.alt || file.name,
+      caption: options.caption,
+    }),
+  });
+}
+
 // ── Default fallback data when the database has not been seeded yet ──────────
 
 export const DEFAULT_SITE_SETTINGS: SiteSettingsData = {

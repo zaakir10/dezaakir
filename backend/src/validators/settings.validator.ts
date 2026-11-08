@@ -6,6 +6,27 @@ const httpsUrlSchema = z
   .max(2048)
   .regex(/^https:\/\/[^\s<>"']+$/i, "Must be a valid HTTPS URL");
 
+const optionalHttpsUrl = z
+  .union([httpsUrlSchema, z.literal("")])
+  .optional()
+  .transform((v) => (v ? v : undefined));
+
+const optionalCvUrl = z
+  .union([
+    z
+      .string()
+      .trim()
+      .max(2048)
+      .regex(
+        /^(\/[a-zA-Z0-9._/-]+|https:\/\/[^\s<>"']+)$/i,
+        "CV URL must be an HTTPS URL or a local /path"
+      ),
+    z.literal(""),
+    z.null(),
+  ])
+  .optional()
+  .transform((v) => (v ? v : undefined));
+
 const cloudinaryImageSchema = z.strictObject({
   media: z.string().regex(/^[a-f\d]{24}$/i).optional(),
   url: z
@@ -21,21 +42,27 @@ const cloudinaryImageSchema = z.strictObject({
 
 export const UpdateSiteSettingsSchema = z.strictObject({
   siteTitle: z.string().trim().min(2).max(80).optional(),
+  authorName: z.string().trim().min(1).max(80).optional(),
   tagline: z.string().trim().max(160).optional(),
   heroTitle: z.string().trim().max(160).optional(),
   heroDescription: z.string().trim().max(500).optional(),
   biography: z.string().trim().max(5000).optional(),
   profileImage: cloudinaryImageSchema.nullish(),
-  cvUrl: httpsUrlSchema.nullish(),
+  cvUrl: optionalCvUrl,
   location: z.string().trim().max(100).optional(),
   socialLinks: z
     .strictObject({
-      github: httpsUrlSchema.optional(),
-      linkedin: httpsUrlSchema.optional(),
-      x: httpsUrlSchema.optional(),
-      youtube: httpsUrlSchema.optional(),
-      website: httpsUrlSchema.optional(),
-      email: z.string().trim().toLowerCase().max(254).email().optional(),
+      github: optionalHttpsUrl,
+      linkedin: optionalHttpsUrl,
+      x: optionalHttpsUrl,
+      facebook: optionalHttpsUrl,
+      tiktok: optionalHttpsUrl,
+      youtube: optionalHttpsUrl,
+      website: optionalHttpsUrl,
+      email: z
+        .union([z.string().trim().toLowerCase().max(254).email(), z.literal("")])
+        .optional()
+        .transform((v) => (v ? v : undefined)),
     })
     .optional(),
   skills: z

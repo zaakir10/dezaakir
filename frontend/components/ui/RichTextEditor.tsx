@@ -23,12 +23,14 @@ import {
 } from "lucide-react";
 
 interface RichTextEditorProps {
-  value: string;
+  value?: string;
+  content?: string;
   onChange: (html: string) => void;
   placeholder?: string;
 }
 
-export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorProps) {
+export function RichTextEditor({ value, content, onChange, placeholder }: RichTextEditorProps) {
+  const htmlValue = content ?? value ?? "";
   const [sourceMode, setSourceMode] = useState(false);
 
   const editor = useEditor({
@@ -48,7 +50,7 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
         inline: false,
       }),
     ],
-    content: value || "<p></p>",
+    content: htmlValue || "<p></p>",
     editorProps: {
       attributes: {
         class:
@@ -61,10 +63,10 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
   });
 
   useEffect(() => {
-    if (editor && value !== editor.getHTML()) {
-      editor.commands.setContent(value || "<p></p>", { emitUpdate: false });
+    if (editor && htmlValue !== editor.getHTML()) {
+      editor.commands.setContent(htmlValue || "<p></p>", { emitUpdate: false });
     }
-  }, [value, editor]);
+  }, [htmlValue, editor]);
 
   const promptLink = () => {
     if (!editor) return;
@@ -216,7 +218,7 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
 
       {sourceMode ? (
         <textarea
-          value={value}
+          value={htmlValue}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder ?? "<p>Write content...</p>"}
           rows={12}

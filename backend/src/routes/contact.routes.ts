@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  deleteMessageHandler,
   listMessagesHandler,
   submitContactHandler,
   updateMessageStatusHandler,
@@ -20,11 +21,16 @@ export const adminMessagesRouter = Router();
 // Public contact endpoint: POST /api/contact
 contactRouter.post("/", contactLimiter, validate({ body: ContactSubmissionSchema }), submitContactHandler);
 
-// Admin contact message management: GET /api/admin/messages & PATCH /api/admin/messages/:id
+// Admin contact message management: GET /api/admin/messages, PATCH /api/admin/messages/:id, DELETE /api/admin/messages/:id
 adminMessagesRouter.use(requireAdmin);
 adminMessagesRouter.get("/", validate({ query: ListMessagesQuerySchema }), listMessagesHandler);
 adminMessagesRouter.patch(
   "/:id",
   validate({ params: MessageIdParamSchema, body: UpdateMessageStatusSchema }),
   updateMessageStatusHandler,
+);
+adminMessagesRouter.delete(
+  "/:id",
+  validate({ params: MessageIdParamSchema }),
+  deleteMessageHandler,
 );

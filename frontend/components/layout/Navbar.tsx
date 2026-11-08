@@ -21,6 +21,10 @@ export function Navbar() {
   const { user, loading, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  if (pathname?.startsWith("/admin")) {
+    return null;
+  }
+
   const handleLogout = async () => {
     await logout();
     setMobileOpen(false);

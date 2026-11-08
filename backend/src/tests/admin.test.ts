@@ -153,4 +153,149 @@ describe("Phase 8: Admin Overview, User Management & Audit Logs", () => {
     expect(logsRes.status).toBe(200);
     expect(logsRes.body.data.logs.length).toBeGreaterThanOrEqual(2);
   });
+
+  it("supports enterprise dashboard features: overview series, taxonomy update & usageCount, bulk blog actions, message deletion, and extended settings", async () => {
+    const admin = await loginAdmin();
+
+    // 1. Create & update Category and Tag, verify usageCount
+    const catRes = await request(app)
+      .post("/api/categories")
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({ name: "Systems Architecture", type: "BLOG", description: "Initial desc" });
+    expect(catRes.status).toBe(201);
+    const catId = catRes.body.data.category.id as string;
+
+    const updateCatRes = await request(app)
+      .put(`/api/categories/${catId}`)
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({ name: "Distributed Systems", description: "Updated desc" });
+    expect(updateCatRes.status).toBe(200);
+    expect(updateCatRes.body.data.category.name).toBe("Distributed Systems");
+
+    const tagRes = await request(app)
+      .post("/api/tags")
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({ name: "TypeScript" });
+    expect(tagRes.status).toBe(201);
+    const tagId = tagRes.body.data.tag.id as string;
+
+    const updateTagRes = await request(app)
+      .put(`/api/tags/${tagId}`)
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({ name: "Strict TypeScript" });
+    expect(updateTagRes.status).toBe(200);
+    expect(updateTagRes.body.data.tag.name).toBe("Strict TypeScript");
+
+    // 2. Create two draft blog posts in that category/tag and run bulk PUBLISH + DELETE
+    const blog1 = await request(app)
+      .post("/api/admin/blogs")
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({
+        title: "First Enterprise Blog Post",
+        excerpt: "Summary of first post",
+        content: "<p>Detailed technical content for first post.</p>",
+        category: catId,
+        tags: [tagId],
+        status: "DRAFT",
+      });
+    expect(blog1.status).toBe(201);
+    const blog1Id = blog1.body.data.blog.id as string;
+
+    const blog2 = await request(app)
+      .post("/api/admin/blogs")
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({
+        title: "Second Enterprise Blog Post",
+        excerpt: "Summary of second post",
+        content: "<p>Detailed technical content for second post.</p>",
+        category: catId,
+        tags: [tagId],
+        status: "DRAFT",
+      });
+    expect(blog2.status).toBe(201);
+    const blog2Id = blog2.body.data.blog.id as string;
+
+    // Verify usageCount on categories and tags
+    const listCats = await request(app).get("/api/categories");
+    expect(listCats.status).toBe(200);
+    expect(listCats.body.data.categories[0].usageCount).toBe(2);
+
+    const listTags = await request(app).get("/api/tags");
+    expect(listTags.status).toBe(200);
+    expect(listTags.body.data.tags[0].usageCount).toBe(2);
+
+    // Bulk PUBLISH
+    const bulkPub = await request(app)
+      .post("/api/admin/blogs/bulk")
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({ ids: [blog1Id, blog2Id], action: "PUBLISH" });
+    expect(bulkPub.status).toBe(200);
+    expect(bulkPub.body.data.affected).toBe(2);
+
+    // Bulk DELETE
+    const bulkDel = await request(app)
+      .post("/api/admin/blogs/bulk")
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({ ids: [blog2Id], action: "DELETE" });
+    expect(bulkDel.status).toBe(200);
+    expect(bulkDel.body.data.affected).toBe(1);
+
+    // 3. Submit contact message and delete it via admin endpoint
+    const contactRes = await request(app).post("/api/contact").send({
+      name: "Enterprise Inquiry",
+      email: "client@example.com",
+      subject: "Architecture Consulting",
+      message: "We would like to discuss a platform engineering engagement.",
+    });
+    expect(contactRes.status).toBe(201);
+
+    const messagesList = await request(app)
+      .get("/api/admin/messages?search=Architecture")
+      .set("Cookie", admin.cookie);
+    expect(messagesList.status).toBe(200);
+    expect(messagesList.body.data.messages).toHaveLength(1);
+    const msgId = messagesList.body.data.messages[0].id as string;
+
+    const delMsg = await request(app)
+      .delete(`/api/admin/messages/${msgId}`)
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken);
+    expect(delMsg.status).toBe(200);
+    expect(delMsg.body.data.deleted).toBe(true);
+
+    // 4. Update site settings with authorName, facebook, and tiktok
+    const settingsRes = await request(app)
+      .put("/api/admin/settings")
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({
+        siteTitle: "Dezaakir",
+        authorName: "Zaakir",
+        socialLinks: {
+          github: "https://github.com/dezaakir",
+          facebook: "https://facebook.com/dezaakir",
+          tiktok: "https://tiktok.com/@dezaakir",
+        },
+      });
+    expect(settingsRes.status).toBe(200);
+    expect(settingsRes.body.data.settings.authorName).toBe("Zaakir");
+    expect(settingsRes.body.data.settings.socialLinks.facebook).toBe("https://facebook.com/dezaakir");
+
+    // 5. Verify overview monthlySeries and comparisons
+    const ov = await request(app)
+      .get("/api/admin/overview")
+      .set("Cookie", admin.cookie);
+    expect(ov.status).toBe(200);
+    expect(ov.body.data.stats.blogs.total).toBe(1);
+    expect(ov.body.data.monthlySeries).toHaveLength(6);
+    expect(ov.body.data.systemStatus).toBeDefined();
+  });
 });

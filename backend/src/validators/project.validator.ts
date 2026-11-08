@@ -134,6 +134,7 @@ export const listProjectsQuerySchema = z
       .transform((v) => (v === undefined ? undefined : v === "true")),
     search: z.string().trim().max(100).optional(),
     status: z.enum(["DRAFT", "PUBLISHED"]).optional(),
+    sort: z.enum(["newest", "oldest", "title"]).optional(),
   })
   .strict();
 

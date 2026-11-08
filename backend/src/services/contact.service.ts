@@ -1,9 +1,9 @@
 import type { Request } from "express";
-import { ContactMessage, type IContactMessage } from "../models/index.js";
+import { ContactMessage } from "../models/index.js";
 import { AppError } from "../utils/AppError.js";
 import type { PaginationMeta } from "../utils/apiResponse.js";
 import { hashToken } from "../utils/crypto.js";
-import { normalizePage, toObjectId } from "../utils/query.js";
+import { escapeRegex, normalizePage, toObjectId, trusted } from "../utils/query.js";
 import { sanitizePlainText } from "../utils/sanitizeHtml.js";
 import type {
   ContactSubmissionInput,
@@ -67,6 +67,14 @@ export async function listContactMessages(
   if (query.status) {
     filter.status = query.status;
   }
+  if (query.search) {
+    const safePattern = new RegExp(escapeRegex(query.search), "i");
+    filter.$or = trusted([
+      { name: trusted({ $regex: safePattern }) },
+      { email: trusted({ $regex: safePattern }) },
+      { subject: trusted({ $regex: safePattern }) },
+    ]);
+  }
 
   const [total, docs] = await Promise.all([
     ContactMessage.countDocuments(filter),
@@ -111,4 +119,28 @@ export async function updateContactMessageStatus(
   });
 
   return (updated as unknown as { toJSON(): Record<string, unknown> }).toJSON();
+}
+
+export async function deleteContactMessage(
+  id: string,
+  req?: Request,
+): Promise<{ deleted: true; id: string }> {
+  const deleted = await ContactMessage.findByIdAndDelete(toObjectId(id)).lean();
+  if (!deleted) {
+    throw AppError.notFound("Contact message not found");
+  }
+
+  await recordAudit({
+    category: "ADMIN",
+    action: "admin.delete_message",
+    outcome: "SUCCESS",
+    actor: req?.user?._id,
+    actorEmail: req?.user?.email,
+    targetType: "ContactMessage",
+    targetId: id,
+    req,
+    metadata: { subject: deleted.subject, senderEmail: deleted.email },
+  });
+
+  return { deleted: true, id };
 }

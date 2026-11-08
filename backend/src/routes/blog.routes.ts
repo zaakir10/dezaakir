@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  bulkBlogActionHandler,
   createBlogHandler,
   deleteBlogHandler,
   getAdminBlogByIdHandler,
@@ -13,6 +14,7 @@ import { validate } from "../middleware/validate.js";
 import {
   BlogIdParamSchema,
   BlogSlugParamSchema,
+  BulkBlogActionSchema,
   CreateBlogSchema,
   ListBlogsQuerySchema,
   UpdateBlogSchema,
@@ -30,7 +32,11 @@ blogRouter.post("/", requireAdmin, validate({ body: CreateBlogSchema }), createB
 blogRouter.put("/:id", requireAdmin, validate({ params: BlogIdParamSchema, body: UpdateBlogSchema }), updateBlogHandler);
 blogRouter.delete("/:id", requireAdmin, validate({ params: BlogIdParamSchema }), deleteBlogHandler);
 
-// Admin blog read routes (includes drafts & scheduled posts): GET /api/admin/blogs, GET /api/admin/blogs/:id
+// Admin blog routes (includes drafts & scheduled posts): /api/admin/blogs
 adminBlogRouter.use(requireAdmin);
 adminBlogRouter.get("/", validate({ query: ListBlogsQuerySchema }), listAdminBlogsHandler);
+adminBlogRouter.post("/bulk", validate({ body: BulkBlogActionSchema }), bulkBlogActionHandler);
+adminBlogRouter.post("/", validate({ body: CreateBlogSchema }), createBlogHandler);
 adminBlogRouter.get("/:id", validate({ params: BlogIdParamSchema }), getAdminBlogByIdHandler);
+adminBlogRouter.put("/:id", validate({ params: BlogIdParamSchema, body: UpdateBlogSchema }), updateBlogHandler);
+adminBlogRouter.delete("/:id", validate({ params: BlogIdParamSchema }), deleteBlogHandler);

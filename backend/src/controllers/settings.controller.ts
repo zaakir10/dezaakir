@@ -17,6 +17,7 @@ export const updateSiteSettingsHandler: RequestHandler = async (req, res) => {
 
   const update: Record<string, unknown> = {};
   if (body.siteTitle !== undefined) update.siteTitle = sanitizePlainText(body.siteTitle);
+  if (body.authorName !== undefined) update.authorName = sanitizePlainText(body.authorName);
   if (body.tagline !== undefined) update.tagline = sanitizePlainText(body.tagline);
   if (body.heroTitle !== undefined) update.heroTitle = sanitizePlainText(body.heroTitle);
   if (body.heroDescription !== undefined) update.heroDescription = sanitizePlainText(body.heroDescription);

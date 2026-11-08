@@ -1,35 +1,84 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  LayoutDashboard,
-  FileText,
-  FolderKanban,
-  Tags,
-  Users,
-  Image as ImageIcon,
-  Mail,
-  Settings,
-  ShieldAlert,
-  Plus,
-  Trash2,
+  Activity,
+  Archive,
+  BarChart3,
+  BookOpen,
+  Calendar,
+  CheckSquare,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
   Edit3,
-  Upload,
-  Check,
-  X,
+  ExternalLink,
+  Eye,
+  FileText,
+  Folder,
+  FolderKanban,
+  Globe,
+  Image as ImageIcon,
+  LayoutDashboard,
+  LogOut,
+  Mail,
+  Menu,
+  MessageSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
   RefreshCw,
   Search,
-  Lock,
-  ExternalLink,
+  Settings,
+  ShieldCheck,
+  Sparkles,
+  Square,
+  Tag,
+  Trash2,
+  Upload,
+  Users,
+  X,
 } from "lucide-react";
-import { apiRequest, DEFAULT_SITE_SETTINGS } from "@/lib/api";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
+import { useAuth } from "@/features/auth/AuthContext";
+import {
+  AdminCategoriesView,
+  AdminMediaLibraryView,
+  AdminMessagesView,
+  AdminTagsView,
+  AdminUsersView,
+  slugifyText,
+} from "@/features/admin/AdminManagementViews";
+import {
+  AdminAnalyticsView,
+  AdminAuditLogsView,
+  AdminSeoSettingsView,
+  AdminSiteSettingsView,
+} from "@/features/admin/AdminSystemViews";
+import {
+  BarChartCard,
+  ConfirmDialog,
+  type ConfirmDialogState,
+  EmptyState,
+  MediaPickerModal,
+  PaginationBar,
+  TableSkeleton,
+  type ToastItem,
+  ToastStack,
+} from "@/features/admin/AdminUI";
+import { apiFetch, apiUploadMediaFile } from "@/lib/api";
 import type {
+  AdminOverviewData,
   AuditLogItem,
   BlogArticle,
   CategoryItem,
   ContactMessageItem,
+  ImageRef,
   MediaItem,
+  PaginationMeta,
   ProjectItem,
   SessionInfo,
   SiteSettingsData,
@@ -37,1852 +86,3102 @@ import type {
   User,
 } from "@/types";
 
-type AdminTab =
-  | "overview"
+export type AdminNavSection =
+  | "dashboard"
   | "blogs"
   | "projects"
-  | "taxonomy"
-  | "users"
+  | "categories"
+  | "tags"
   | "media"
   | "messages"
+  | "users"
+  | "analytics"
   | "settings"
+  | "seo"
   | "audit";
 
-interface OverviewStats {
-  totalBlogs: number;
-  publishedBlogs: number;
-  draftBlogs: number;
-  scheduledBlogs: number;
-  totalProjects: number;
-  publishedProjects: number;
-  draftProjects: number;
-  totalUsers: number;
-  unverifiedUsers: number;
-  suspendedUsers: number;
-  totalMessages: number;
-  unreadMessages: number;
-  totalMedia: number;
-}
+const DEFAULT_META: PaginationMeta = {
+  page: 1,
+  limit: 12,
+  total: 0,
+  totalPages: 1,
+};
 
 export function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState<AdminTab>("overview");
-  const [banner, setBanner] = useState<{ type: "info" | "error"; text: string } | null>(null);
-  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+  const { user: currentAdmin, logout } = useAuth();
 
-  // Overview state
-  const [stats, setStats] = useState<OverviewStats | null>(null);
-  const [recentActivity, setRecentActivity] = useState<AuditLogItem[]>([]);
+  // Shell & Navigation State
+  const [activeSection, setActiveSection] = useState<AdminNavSection>("dashboard");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  // Blogs state
-  const [blogs, setBlogs] = useState<BlogArticle[]>([]);
-  const [blogSearch, setBlogSearch] = useState("");
-  const [blogStatusFilter, setBlogStatusFilter] = useState<string>("");
-  const [editingBlog, setEditingBlog] = useState<{
-    id?: string;
-    title: string;
-    slug: string;
-    excerpt: string;
-    content: string;
-    category: string;
-    tags: string[];
-    status: "DRAFT" | "SCHEDULED" | "PUBLISHED";
-    featured: boolean;
-    publishedAt: string;
-    coverUrl: string;
-    coverPublicId: string;
-    coverAlt: string;
-    seoTitle: string;
-    seoDescription: string;
-  } | null>(null);
+  // Toasts & Confirmation Dialog
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [confirmState, setConfirmState] = useState<ConfirmDialogState | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
 
-  // Projects state
-  const [projects, setProjects] = useState<ProjectItem[]>([]);
-  const [projectSearch, setProjectSearch] = useState("");
-  const [editingProject, setEditingProject] = useState<{
-    id?: string;
-    title: string;
-    slug: string;
-    summary: string;
-    description: string;
-    technologiesText: string;
-    githubUrl: string;
-    liveUrl: string;
-    category: string;
-    featured: boolean;
-    status: "DRAFT" | "PUBLISHED";
-    order: number;
-    coverUrl: string;
-    coverPublicId: string;
-    coverAlt: string;
-    seoTitle: string;
-    seoDescription: string;
-  } | null>(null);
-
-  // Taxonomy state
-  const [categories, setCategories] = useState<CategoryItem[]>([]);
-  const [tags, setTags] = useState<TagItem[]>([]);
-  const [newCategoryName, setNewCategoryName] = useState("");
-  const [newCategoryType, setNewCategoryType] = useState<"BLOG" | "PROJECT">("BLOG");
-  const [newCategoryDesc, setNewCategoryDesc] = useState("");
-  const [newTagName, setNewTagName] = useState("");
-
-  // Users state
-  const [users, setUsers] = useState<User[]>([]);
-  const [userSearch, setUserSearch] = useState("");
-  const [selectedUserDetail, setSelectedUserDetail] = useState<{
-    user: User;
-    sessions: SessionInfo[];
-    recentActivity: AuditLogItem[];
-  } | null>(null);
-
-  // Media state
-  const [mediaList, setMediaList] = useState<MediaItem[]>([]);
-  const [mediaFolder, setMediaFolder] = useState<string>("dezaakir/general");
-  const [mediaAlt, setMediaAlt] = useState("");
-  const [uploadingMedia, setUploadingMedia] = useState(false);
-
-  // Messages state
-  const [messages, setMessages] = useState<ContactMessageItem[]>([]);
-  const [messageStatusFilter, setMessageStatusFilter] = useState<string>("");
-
-  // Settings state
-  const [siteSettings, setSiteSettings] = useState<SiteSettingsData>(DEFAULT_SITE_SETTINGS);
-  const [skillsJson, setSkillsJson] = useState("");
-  const [interestsText, setInterestsText] = useState("");
-
-  // Audit logs state
-  const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
-  const [auditCategoryFilter, setAuditCategoryFilter] = useState<string>("");
-
-  const notify = (text: string, type: "info" | "error" = "info") => {
-    setBanner({ type, text });
-  };
-
-  const loadTaxonomy = useCallback(async () => {
-    const [catRes, tagRes] = await Promise.all([
-      apiRequest<{ categories: CategoryItem[] }>("/api/categories"),
-      apiRequest<{ tags: TagItem[] }>("/api/tags"),
-    ]);
-    setCategories(catRes.data.categories ?? []);
-    setTags(tagRes.data.tags ?? []);
-  }, []);
-
-  const loadTabContent = useCallback(
-    async (tab: AdminTab) => {
-      setLoading(true);
-      try {
-        if (tab === "overview") {
-          const res = await apiRequest<{ stats: OverviewStats; recentActivity: AuditLogItem[] }>(
-            "/api/admin/overview"
-          );
-          setStats(res.data.stats);
-          setRecentActivity(res.data.recentActivity ?? []);
-        } else if (tab === "blogs") {
-          await loadTaxonomy();
-          const qs = new URLSearchParams({ limit: "50" });
-          if (blogSearch.trim()) qs.set("search", blogSearch.trim());
-          if (blogStatusFilter) qs.set("status", blogStatusFilter);
-          const res = await apiRequest<{ blogs: BlogArticle[] }>(
-            `/api/admin/blogs?${qs.toString()}`
-          );
-          setBlogs(res.data.blogs ?? []);
-        } else if (tab === "projects") {
-          await loadTaxonomy();
-          const qs = new URLSearchParams({ limit: "50" });
-          if (projectSearch.trim()) qs.set("search", projectSearch.trim());
-          const res = await apiRequest<{ projects: ProjectItem[] }>(
-            `/api/admin/projects?${qs.toString()}`
-          );
-          setProjects(res.data.projects ?? []);
-        } else if (tab === "taxonomy") {
-          await loadTaxonomy();
-        } else if (tab === "users") {
-          const qs = new URLSearchParams({ limit: "50" });
-          if (userSearch.trim()) qs.set("search", userSearch.trim());
-          const res = await apiRequest<{ users: User[] }>(`/api/admin/users?${qs.toString()}`);
-          setUsers(res.data.users ?? []);
-        } else if (tab === "media") {
-          const res = await apiRequest<{ media: MediaItem[] }>("/api/admin/media?limit=50");
-          setMediaList(res.data.media ?? []);
-        } else if (tab === "messages") {
-          const qs = new URLSearchParams({ limit: "50" });
-          if (messageStatusFilter) qs.set("status", messageStatusFilter);
-          const res = await apiRequest<{ messages: ContactMessageItem[] }>(
-            `/api/admin/messages?${qs.toString()}`
-          );
-          setMessages(res.data.messages ?? []);
-        } else if (tab === "settings") {
-          const res = await apiRequest<{ settings: SiteSettingsData }>("/api/settings");
-          const merged = { ...DEFAULT_SITE_SETTINGS, ...(res.data.settings ?? {}) };
-          setSiteSettings(merged);
-          setSkillsJson(JSON.stringify(merged.skills ?? [], null, 2));
-          setInterestsText((merged.careerInterests ?? []).join("\n"));
-        } else if (tab === "audit") {
-          const qs = new URLSearchParams({ limit: "50" });
-          if (auditCategoryFilter) qs.set("category", auditCategoryFilter);
-          const res = await apiRequest<{ logs: AuditLogItem[] }>(
-            `/api/admin/audit-logs?${qs.toString()}`
-          );
-          setAuditLogs(res.data.logs ?? []);
-        }
-      } catch (err) {
-        notify(err instanceof Error ? err.message : "Failed to load data", "error");
-      } finally {
-        setLoading(false);
-      }
+  const pushToast = useCallback(
+    (type: "success" | "error" | "info", title: string, message?: string) => {
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      setToasts((prev) => [...prev, { id, type, title, message }]);
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((item) => item.id !== id));
+      }, 4500);
     },
-    [
-      blogSearch,
-      blogStatusFilter,
-      projectSearch,
-      userSearch,
-      messageStatusFilter,
-      auditCategoryFilter,
-      loadTaxonomy,
-    ]
+    []
   );
 
-  useEffect(() => {
-    void loadTabContent(activeTab);
-  }, [activeTab, loadTabContent]);
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((item) => item.id !== id));
+  }, []);
 
-  // ── Blog handlers ──────────────────────────────────────────────────────────
-  const openNewBlog = () => {
-    setEditingBlog({
-      title: "",
-      slug: "",
-      excerpt: "",
-      content: "<h2>Introduction</h2><p>Write your technical article here...</p>",
-      category: "",
-      tags: [],
-      status: "DRAFT",
-      featured: false,
-      publishedAt: "",
-      coverUrl: "",
-      coverPublicId: "",
-      coverAlt: "",
-      seoTitle: "",
-      seoDescription: "",
-    });
+  const askConfirm = (config: Omit<ConfirmDialogState, "open">) => {
+    setConfirmState({ ...config, open: true });
+  };
+
+  // Media Picker Modal State
+  const [mediaPickerTarget, setMediaPickerTarget] = useState<
+    null | "blogCover" | "projectThumb" | "projectScreenshot" | "profile" | "og"
+  >(null);
+
+  // Core Data Collections
+  const [overview, setOverview] = useState<AdminOverviewData | null>(null);
+  const [blogs, setBlogs] = useState<BlogArticle[]>([]);
+  const [blogsMeta, setBlogsMeta] = useState<PaginationMeta>(DEFAULT_META);
+  const [projects, setProjects] = useState<ProjectItem[]>([]);
+  const [projectsMeta, setProjectsMeta] = useState<PaginationMeta>(DEFAULT_META);
+  const [categories, setCategories] = useState<CategoryItem[]>([]);
+  const [tags, setTags] = useState<TagItem[]>([]);
+  const [media, setMedia] = useState<MediaItem[]>([]);
+  const [messages, setMessages] = useState<ContactMessageItem[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [settings, setSettings] = useState<SiteSettingsData | null>(null);
+  const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
+  const [auditMeta, setAuditMeta] = useState<PaginationMeta>(DEFAULT_META);
+
+  // Loading Flags
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [blogsLoading, setBlogsLoading] = useState(false);
+  const [projectsLoading, setProjectsLoading] = useState(false);
+  const [mediaLoading, setMediaLoading] = useState(false);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // Blog Listing Filters & Bulk Selection
+  const [blogSearch, setBlogSearch] = useState("");
+  const [blogStatusFilter, setBlogStatusFilter] = useState("");
+  const [blogCategoryFilter, setBlogCategoryFilter] = useState("");
+  const [blogSort, setBlogSort] = useState<"newest" | "oldest" | "title">("newest");
+  const [blogPage, setBlogPage] = useState(1);
+  const [selectedBlogIds, setSelectedBlogIds] = useState<string[]>([]);
+
+  // Blog Editor State
+  const [blogEditorOpen, setBlogEditorOpen] = useState(false);
+  const [blogEditorMode, setBlogEditorMode] = useState<"write" | "preview">("write");
+  const [editingBlogId, setEditingBlogId] = useState<string | null>(null);
+  const [blogTitle, setBlogTitle] = useState("");
+  const [blogSlug, setBlogSlug] = useState("");
+  const [blogExcerpt, setBlogExcerpt] = useState("");
+  const [blogContent, setBlogContent] = useState("<p>Write your technical article here...</p>");
+  const [blogCoverImage, setBlogCoverImage] = useState<ImageRef | undefined>(undefined);
+  const [blogCategoryId, setBlogCategoryId] = useState("");
+  const [blogSelectedTagIds, setBlogSelectedTagIds] = useState<string[]>([]);
+  const [blogStatus, setBlogStatus] = useState<"DRAFT" | "PUBLISHED" | "SCHEDULED">("DRAFT");
+  const [blogScheduledAt, setBlogScheduledAt] = useState("");
+  const [blogFeatured, setBlogFeatured] = useState(false);
+  const [blogSeoTitle, setBlogSeoTitle] = useState("");
+  const [blogSeoDescription, setBlogSeoDescription] = useState("");
+
+  // Project Listing Filters
+  const [projectSearch, setProjectSearch] = useState("");
+  const [projectStatusFilter, setProjectStatusFilter] = useState("");
+  const [projectCategoryFilter, setProjectCategoryFilter] = useState("");
+  const [projectSort, setProjectSort] = useState<"newest" | "oldest" | "title">("newest");
+  const [projectPage, setProjectPage] = useState(1);
+
+  // Project Editor State
+  const [projectEditorOpen, setProjectEditorOpen] = useState(false);
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [projectTitle, setProjectTitle] = useState("");
+  const [projectSlug, setProjectSlug] = useState("");
+  const [projectSummary, setProjectSummary] = useState("");
+  const [projectDescription, setProjectDescription] = useState(
+    "<p>Describe the architecture, engineering trade-offs, and outcomes...</p>"
+  );
+  const [projectCoverImage, setProjectCoverImage] = useState<ImageRef | undefined>(undefined);
+  const [projectScreenshots, setProjectScreenshots] = useState<ImageRef[]>([]);
+  const [projectTechInput, setProjectTechInput] = useState("TypeScript, Next.js, Bun, MongoDB");
+  const [projectGithubUrl, setProjectGithubUrl] = useState("");
+  const [projectLiveUrl, setProjectLiveUrl] = useState("");
+  const [projectCategoryId, setProjectCategoryId] = useState("");
+  const [projectStatus, setProjectStatus] = useState<"DRAFT" | "PUBLISHED">("PUBLISHED");
+  const [projectFeatured, setProjectFeatured] = useState(false);
+  const [projectOrder, setProjectOrder] = useState(0);
+  const [projectSeoTitle, setProjectSeoTitle] = useState("");
+  const [projectSeoDescription, setProjectSeoDescription] = useState("");
+
+  // Media Filters & Upload State
+  const [mediaSearch, setMediaSearch] = useState("");
+  const [mediaFolderFilter, setMediaFolderFilter] = useState("");
+  const [uploadFolder, setUploadFolder] = useState<"blogs" | "projects" | "profile" | "general">(
+    "general"
+  );
+  const [uploadAlt, setUploadAlt] = useState("");
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+
+  // Contact Messages Filters
+  const [messageStatusFilter, setMessageStatusFilter] = useState("");
+  const [messageSearch, setMessageSearch] = useState("");
+
+  // Users Filters & Inspector State
+  const [userSearch, setUserSearch] = useState("");
+  const [userRoleFilter, setUserRoleFilter] = useState("");
+  const [userStatusFilter, setUserStatusFilter] = useState("");
+  const [inspectedUser, setInspectedUser] = useState<User | null>(null);
+  const [inspectedSessions, setInspectedSessions] = useState<SessionInfo[]>([]);
+  const [inspectedActivity, setInspectedActivity] = useState<AuditLogItem[]>([]);
+
+  // Audit Log Filters
+  const [auditCategoryFilter, setAuditCategoryFilter] = useState("");
+  const [auditOutcomeFilter, setAuditOutcomeFilter] = useState("");
+  const [auditActionSearch, setAuditActionSearch] = useState("");
+  const [auditPage, setAuditPage] = useState(1);
+
+  // Calculated Reading Time for Blog Editor
+  const estimatedReadingTime = useMemo(() => {
+    const plain = blogContent.replace(/<[^>]+>/g, " ").trim();
+    const words = plain ? plain.split(/\s+/).length : 0;
+    return Math.max(1, Math.ceil(words / 200));
+  }, [blogContent]);
+
+  // Data Fetchers
+  const fetchOverviewAndTaxonomy = useCallback(async () => {
+    const [ovRes, catRes, tagRes, setRes] = await Promise.all([
+      apiFetch<AdminOverviewData>("/api/admin/overview"),
+      apiFetch<{ categories: CategoryItem[] }>("/api/categories"),
+      apiFetch<{ tags: TagItem[] }>("/api/tags"),
+      apiFetch<{ settings: SiteSettingsData }>("/api/settings"),
+    ]);
+    setOverview(ovRes.data);
+    setCategories(catRes.data.categories ?? []);
+    setTags(tagRes.data.tags ?? []);
+    setSettings(setRes.data.settings);
+  }, []);
+
+  const fetchBlogs = useCallback(
+    async (pageOverride?: number) => {
+      setBlogsLoading(true);
+      try {
+        const p = pageOverride ?? blogPage;
+        const params = new URLSearchParams({
+          page: String(p),
+          limit: "12",
+          sort: blogSort,
+        });
+        if (blogSearch.trim()) params.set("search", blogSearch.trim());
+        if (blogStatusFilter) params.set("status", blogStatusFilter);
+        if (blogCategoryFilter) params.set("category", blogCategoryFilter);
+        const res = await apiFetch<{ blogs: BlogArticle[] }>(
+          `/api/admin/blogs?${params.toString()}`
+        );
+        const list = res.data.blogs ?? [];
+        setBlogs(list);
+        setSelectedBlogIds([]);
+        if (res.meta) {
+          setBlogsMeta({
+            page: Number(res.meta.page ?? p),
+            limit: Number(res.meta.limit ?? 12),
+            total: Number(res.meta.total ?? list.length),
+            totalPages: Number(res.meta.totalPages ?? 1),
+          });
+        }
+      } finally {
+        setBlogsLoading(false);
+      }
+    },
+    [blogPage, blogSort, blogSearch, blogStatusFilter, blogCategoryFilter]
+  );
+
+  const fetchProjects = useCallback(
+    async (pageOverride?: number) => {
+      setProjectsLoading(true);
+      try {
+        const p = pageOverride ?? projectPage;
+        const params = new URLSearchParams({
+          page: String(p),
+          limit: "12",
+          sort: projectSort,
+        });
+        if (projectSearch.trim()) params.set("search", projectSearch.trim());
+        if (projectStatusFilter) params.set("status", projectStatusFilter);
+        if (projectCategoryFilter) params.set("category", projectCategoryFilter);
+        const res = await apiFetch<{ projects: ProjectItem[] }>(
+          `/api/admin/projects?${params.toString()}`
+        );
+        const list = res.data.projects ?? [];
+        setProjects(list);
+        if (res.meta) {
+          setProjectsMeta({
+            page: Number(res.meta.page ?? p),
+            limit: Number(res.meta.limit ?? 12),
+            total: Number(res.meta.total ?? list.length),
+            totalPages: Number(res.meta.totalPages ?? 1),
+          });
+        }
+      } finally {
+        setProjectsLoading(false);
+      }
+    },
+    [projectPage, projectSort, projectSearch, projectStatusFilter, projectCategoryFilter]
+  );
+
+  const fetchMedia = useCallback(async () => {
+    setMediaLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: "40" });
+      if (mediaFolderFilter) params.set("folder", mediaFolderFilter);
+      if (mediaSearch.trim()) params.set("search", mediaSearch.trim());
+      const res = await apiFetch<{ media: MediaItem[] }>(`/api/admin/media?${params.toString()}`);
+      setMedia(res.data.media ?? []);
+    } finally {
+      setMediaLoading(false);
+    }
+  }, [mediaFolderFilter, mediaSearch]);
+
+  const fetchMessages = useCallback(async () => {
+    setMessagesLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: "30" });
+      if (messageStatusFilter) params.set("status", messageStatusFilter);
+      if (messageSearch.trim()) params.set("search", messageSearch.trim());
+      const res = await apiFetch<{ messages: ContactMessageItem[] }>(
+        `/api/admin/messages?${params.toString()}`
+      );
+      setMessages(res.data.messages ?? []);
+    } finally {
+      setMessagesLoading(false);
+    }
+  }, [messageStatusFilter, messageSearch]);
+
+  const fetchUsers = useCallback(async () => {
+    setUsersLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: "30" });
+      if (userSearch.trim()) params.set("search", userSearch.trim());
+      if (userRoleFilter) params.set("role", userRoleFilter);
+      if (userStatusFilter) params.set("status", userStatusFilter);
+      const res = await apiFetch<{ users: User[] }>(`/api/admin/users?${params.toString()}`);
+      setUsers(res.data.users ?? []);
+    } finally {
+      setUsersLoading(false);
+    }
+  }, [userSearch, userRoleFilter, userStatusFilter]);
+
+  const fetchAuditLogs = useCallback(
+    async (pageOverride?: number) => {
+      setAuditLoading(true);
+      try {
+        const p = pageOverride ?? auditPage;
+        const params = new URLSearchParams({ page: String(p), limit: "25" });
+        if (auditCategoryFilter) params.set("category", auditCategoryFilter);
+        if (auditOutcomeFilter) params.set("outcome", auditOutcomeFilter);
+        if (auditActionSearch.trim()) params.set("action", auditActionSearch.trim());
+        const res = await apiFetch<{ logs: AuditLogItem[] }>(
+          `/api/admin/audit-logs?${params.toString()}`
+        );
+        const list = res.data.logs ?? [];
+        setAuditLogs(list);
+        if (res.meta) {
+          setAuditMeta({
+            page: Number(res.meta.page ?? p),
+            limit: Number(res.meta.limit ?? 25),
+            total: Number(res.meta.total ?? list.length),
+            totalPages: Number(res.meta.totalPages ?? 1),
+          });
+        }
+      } finally {
+        setAuditLoading(false);
+      }
+    },
+    [auditPage, auditCategoryFilter, auditOutcomeFilter, auditActionSearch]
+  );
+
+  const loadAllDashboardData = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        fetchOverviewAndTaxonomy(),
+        fetchBlogs(1),
+        fetchProjects(1),
+        fetchMedia(),
+        fetchMessages(),
+        fetchUsers(),
+        fetchAuditLogs(1),
+      ]);
+    } catch (err) {
+      pushToast(
+        "error",
+        "Failed to synchronize dashboard",
+        err instanceof Error ? err.message : "Unexpected network error"
+      );
+    } finally {
+      setInitialLoading(false);
+      setRefreshing(false);
+    }
+  }, [
+    fetchOverviewAndTaxonomy,
+    fetchBlogs,
+    fetchProjects,
+    fetchMedia,
+    fetchMessages,
+    fetchUsers,
+    fetchAuditLogs,
+    pushToast,
+  ]);
+
+  useEffect(() => {
+    void loadAllDashboardData();
+  }, []);
+
+  // Re-fetch when filter states change
+  useEffect(() => {
+    if (!initialLoading) void fetchBlogs(1);
+  }, [blogStatusFilter, blogCategoryFilter, blogSort]);
+
+  useEffect(() => {
+    if (!initialLoading) void fetchProjects(1);
+  }, [projectStatusFilter, projectCategoryFilter, projectSort]);
+
+  useEffect(() => {
+    if (!initialLoading) void fetchMessages();
+  }, [messageStatusFilter]);
+
+  useEffect(() => {
+    if (!initialLoading) void fetchMedia();
+  }, [mediaFolderFilter]);
+
+  // Blog Editor Helpers
+  const openNewBlogEditor = () => {
+    setEditingBlogId(null);
+    setBlogTitle("");
+    setBlogSlug("");
+    setBlogExcerpt("");
+    setBlogContent("<p>Start writing your technical article...</p>");
+    setBlogCoverImage(undefined);
+    setBlogCategoryId("");
+    setBlogSelectedTagIds([]);
+    setBlogStatus("DRAFT");
+    setBlogScheduledAt("");
+    setBlogFeatured(false);
+    setBlogSeoTitle("");
+    setBlogSeoDescription("");
+    setBlogEditorMode("write");
+    setBlogEditorOpen(true);
+    setActiveSection("blogs");
   };
 
   const openEditBlog = (blog: BlogArticle) => {
-    const blogId = blog.id || (blog as unknown as { _id?: string })._id || "";
-    setEditingBlog({
-      id: blogId,
-      title: blog.title,
-      slug: blog.slug,
-      excerpt: blog.excerpt,
-      content: blog.content,
-      category: blog.category?.id || (blog.category as unknown as { _id?: string })?._id || "",
-      tags: (blog.tags ?? []).map((t) => t.id || (t as unknown as { _id?: string })._id || ""),
-      status: blog.status,
-      featured: blog.featured,
-      publishedAt: blog.publishedAt ? new Date(blog.publishedAt).toISOString().slice(0, 16) : "",
-      coverUrl: blog.coverImage?.url ?? "",
-      coverPublicId: blog.coverImage?.publicId ?? "",
-      coverAlt: blog.coverImage?.alt ?? "",
-      seoTitle: blog.seoTitle ?? "",
-      seoDescription: blog.seoDescription ?? "",
-    });
+    setEditingBlogId(blog.id);
+    setBlogTitle(blog.title);
+    setBlogSlug(blog.slug);
+    setBlogExcerpt(blog.excerpt);
+    setBlogContent(blog.content);
+    setBlogCoverImage(blog.coverImage);
+    setBlogCategoryId(blog.category?.id || "");
+    setBlogSelectedTagIds((blog.tags || []).map((t) => t.id));
+    setBlogStatus(blog.status);
+    setBlogScheduledAt(
+      blog.publishedAt ? new Date(blog.publishedAt).toISOString().slice(0, 16) : ""
+    );
+    setBlogFeatured(blog.featured);
+    setBlogSeoTitle(blog.seoTitle || "");
+    setBlogSeoDescription(blog.seoDescription || "");
+    setBlogEditorMode("write");
+    setBlogEditorOpen(true);
+    setActiveSection("blogs");
   };
 
-  const saveBlog = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingBlog) return;
+  const saveBlogArticle = async (statusOverride?: "DRAFT" | "PUBLISHED" | "SCHEDULED") => {
+    const targetStatus = statusOverride ?? blogStatus;
+    if (!blogTitle.trim()) {
+      pushToast("error", "Title required", "Please provide a blog post title.");
+      return;
+    }
+    setSaving(true);
     try {
-      const payload: Record<string, unknown> = {
-        title: editingBlog.title,
-        ...(editingBlog.slug.trim() ? { slug: editingBlog.slug.trim() } : {}),
-        excerpt: editingBlog.excerpt,
-        content: editingBlog.content,
-        category: editingBlog.category || null,
-        tags: editingBlog.tags,
-        status: editingBlog.status,
-        featured: editingBlog.featured,
-        ...(editingBlog.publishedAt
-          ? { publishedAt: new Date(editingBlog.publishedAt).toISOString() }
-          : {}),
-        coverImage:
-          editingBlog.coverUrl.trim() && editingBlog.coverPublicId.trim()
-            ? {
-                url: editingBlog.coverUrl.trim(),
-                publicId: editingBlog.coverPublicId.trim(),
-                alt: editingBlog.coverAlt.trim(),
-              }
-            : null,
-        ...(editingBlog.seoTitle.trim() ? { seoTitle: editingBlog.seoTitle.trim() } : {}),
-        ...(editingBlog.seoDescription.trim()
-          ? { seoDescription: editingBlog.seoDescription.trim() }
-          : {}),
-      };
+      const plain = blogContent.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+      const effectiveExcerpt =
+        blogExcerpt.trim().length >= 3
+          ? blogExcerpt.trim()
+          : plain.slice(0, 180) || blogTitle.trim();
 
-      if (editingBlog.id) {
-        await apiRequest(`/api/blogs/${editingBlog.id}`, {
+      const payload: Record<string, unknown> = {
+        title: blogTitle.trim(),
+        slug: blogSlug.trim() || slugifyText(blogTitle),
+        excerpt: effectiveExcerpt,
+        content: blogContent,
+        coverImage: blogCoverImage || null,
+        category: blogCategoryId || null,
+        tags: blogSelectedTagIds,
+        status: targetStatus,
+        featured: blogFeatured,
+        seoTitle: blogSeoTitle.trim() || undefined,
+        seoDescription: blogSeoDescription.trim() || undefined,
+      };
+      if (targetStatus === "SCHEDULED" && blogScheduledAt) {
+        payload.publishedAt = new Date(blogScheduledAt).toISOString();
+      }
+
+      if (editingBlogId) {
+        await apiFetch(`/api/admin/blogs/${editingBlogId}`, {
           method: "PUT",
           body: JSON.stringify(payload),
         });
-        notify("Article updated.");
+        pushToast("success", "Article updated", `"${blogTitle}" has been saved.`);
       } else {
-        await apiRequest("/api/blogs", {
+        await apiFetch("/api/admin/blogs", {
           method: "POST",
           body: JSON.stringify(payload),
         });
-        notify("Article created.");
+        pushToast("success", "Article created", `"${blogTitle}" has been created.`);
       }
-      setEditingBlog(null);
-      await loadTabContent("blogs");
+      setBlogEditorOpen(false);
+      await Promise.all([fetchBlogs(blogPage), fetchOverviewAndTaxonomy()]);
     } catch (err) {
-      notify(err instanceof Error ? err.message : "Failed to save article", "error");
+      pushToast(
+        "error",
+        "Failed to save article",
+        err instanceof Error ? err.message : "Validation error"
+      );
+    } finally {
+      setSaving(false);
     }
   };
 
-  const deleteBlogItem = async (id: string) => {
-    if (!window.confirm("Delete this article permanently?")) return;
-    try {
-      await apiRequest(`/api/blogs/${id}`, { method: "DELETE" });
-      notify("Article deleted.");
-      await loadTabContent("blogs");
-    } catch (err) {
-      notify(err instanceof Error ? err.message : "Failed to delete article", "error");
-    }
-  };
-
-  // ── Project handlers ───────────────────────────────────────────────────────
-  const openNewProject = () => {
-    setEditingProject({
-      title: "",
-      slug: "",
-      summary: "",
-      description: "<h2>Overview</h2><p>Describe the architecture and engineering impact...</p>",
-      technologiesText: "TypeScript, Next.js, Bun, MongoDB",
-      githubUrl: "",
-      liveUrl: "",
-      category: "",
-      featured: false,
-      status: "DRAFT",
-      order: 0,
-      coverUrl: "",
-      coverPublicId: "",
-      coverAlt: "",
-      seoTitle: "",
-      seoDescription: "",
+  const confirmDeleteBlog = (blog: BlogArticle) => {
+    askConfirm({
+      title: "Delete Blog Post",
+      description: `Are you sure you want to permanently delete "${blog.title}"? This action cannot be undone.`,
+      confirmLabel: "Delete Article",
+      onConfirm: async () => {
+        setConfirmBusy(true);
+        try {
+          await apiFetch(`/api/admin/blogs/${blog.id}`, { method: "DELETE" });
+          pushToast("success", "Article deleted", `"${blog.title}" was removed.`);
+          if (editingBlogId === blog.id) setBlogEditorOpen(false);
+          setConfirmState(null);
+          await Promise.all([fetchBlogs(blogPage), fetchOverviewAndTaxonomy()]);
+        } catch (err) {
+          pushToast(
+            "error",
+            "Delete failed",
+            err instanceof Error ? err.message : "Could not delete article"
+          );
+        } finally {
+          setConfirmBusy(false);
+        }
+      },
     });
+  };
+
+  const handleBulkBlogAction = (action: "PUBLISH" | "DRAFT" | "DELETE") => {
+    if (selectedBlogIds.length === 0) return;
+    askConfirm({
+      title: `${action} ${selectedBlogIds.length} Selected Article(s)`,
+      description:
+        action === "DELETE"
+          ? `Permanently delete ${selectedBlogIds.length} selected blog post(s)? This cannot be undone.`
+          : `Change status of ${selectedBlogIds.length} selected blog post(s) to ${
+              action === "PUBLISH" ? "PUBLISHED" : "DRAFT"
+            }?`,
+      confirmLabel: action === "DELETE" ? "Delete Selected" : "Apply Bulk Action",
+      onConfirm: async () => {
+        setConfirmBusy(true);
+        try {
+          await apiFetch("/api/admin/blogs/bulk", {
+            method: "POST",
+            body: JSON.stringify({ ids: selectedBlogIds, action }),
+          });
+          pushToast(
+            "success",
+            "Bulk action completed",
+            `Processed ${selectedBlogIds.length} article(s).`
+          );
+          setConfirmState(null);
+          await Promise.all([fetchBlogs(blogPage), fetchOverviewAndTaxonomy()]);
+        } catch (err) {
+          pushToast(
+            "error",
+            "Bulk action failed",
+            err instanceof Error ? err.message : "Failed to run bulk operation"
+          );
+        } finally {
+          setConfirmBusy(false);
+        }
+      },
+    });
+  };
+
+  // Project Editor Helpers
+  const openNewProjectEditor = () => {
+    setEditingProjectId(null);
+    setProjectTitle("");
+    setProjectSlug("");
+    setProjectSummary("");
+    setProjectDescription("<p>Detail the system architecture, tech stack, and impact...</p>");
+    setProjectCoverImage(undefined);
+    setProjectScreenshots([]);
+    setProjectTechInput("TypeScript, Next.js, Bun, MongoDB");
+    setProjectGithubUrl("");
+    setProjectLiveUrl("");
+    setProjectCategoryId("");
+    setProjectStatus("PUBLISHED");
+    setProjectFeatured(false);
+    setProjectOrder(0);
+    setProjectSeoTitle("");
+    setProjectSeoDescription("");
+    setProjectEditorOpen(true);
+    setActiveSection("projects");
   };
 
   const openEditProject = (proj: ProjectItem) => {
-    const projId = proj.id || (proj as unknown as { _id?: string })._id || "";
-    setEditingProject({
-      id: projId,
-      title: proj.title,
-      slug: proj.slug,
-      summary: proj.summary,
-      description: proj.description,
-      technologiesText: (proj.technologies ?? []).join(", "),
-      githubUrl: proj.githubUrl ?? "",
-      liveUrl: proj.liveUrl ?? "",
-      category: proj.category?.id || (proj.category as unknown as { _id?: string })?._id || "",
-      featured: proj.featured,
-      status: proj.status,
-      order: proj.order ?? 0,
-      coverUrl: proj.coverImage?.url ?? "",
-      coverPublicId: proj.coverImage?.publicId ?? "",
-      coverAlt: proj.coverImage?.alt ?? "",
-      seoTitle: proj.seoTitle ?? "",
-      seoDescription: proj.seoDescription ?? "",
-    });
+    setEditingProjectId(proj.id);
+    setProjectTitle(proj.title);
+    setProjectSlug(proj.slug);
+    setProjectSummary(proj.summary);
+    setProjectDescription(proj.description);
+    setProjectCoverImage(proj.coverImage);
+    setProjectScreenshots(proj.images || []);
+    setProjectTechInput((proj.technologies || []).join(", "));
+    setProjectGithubUrl(proj.githubUrl || "");
+    setProjectLiveUrl(proj.liveUrl || "");
+    setProjectCategoryId(proj.category?.id || "");
+    setProjectStatus(proj.status);
+    setProjectFeatured(proj.featured);
+    setProjectOrder(proj.order || 0);
+    setProjectSeoTitle(proj.seoTitle || "");
+    setProjectSeoDescription(proj.seoDescription || "");
+    setProjectEditorOpen(true);
+    setActiveSection("projects");
   };
 
-  const saveProject = async (e: React.FormEvent) => {
+  const handleSaveProject = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingProject) return;
+    setSaving(true);
     try {
-      const technologies = editingProject.technologiesText
+      const technologies = projectTechInput
         .split(",")
         .map((t) => t.trim())
         .filter(Boolean);
 
-      const payload: Record<string, unknown> = {
-        title: editingProject.title,
-        ...(editingProject.slug.trim() ? { slug: editingProject.slug.trim() } : {}),
-        summary: editingProject.summary,
-        description: editingProject.description,
-        technologies,
-        githubUrl: editingProject.githubUrl.trim(),
-        liveUrl: editingProject.liveUrl.trim(),
-        category: editingProject.category || null,
-        featured: editingProject.featured,
-        status: editingProject.status,
-        order: Number(editingProject.order) || 0,
-        coverImage:
-          editingProject.coverUrl.trim() && editingProject.coverPublicId.trim()
-            ? {
-                url: editingProject.coverUrl.trim(),
-                publicId: editingProject.coverPublicId.trim(),
-                alt: editingProject.coverAlt.trim(),
-              }
-            : null,
-        ...(editingProject.seoTitle.trim() ? { seoTitle: editingProject.seoTitle.trim() } : {}),
-        ...(editingProject.seoDescription.trim()
-          ? { seoDescription: editingProject.seoDescription.trim() }
-          : {}),
+      const payload = {
+        title: projectTitle.trim(),
+        slug: projectSlug.trim() || slugifyText(projectTitle),
+        summary: projectSummary.trim() || projectTitle.trim(),
+        description: projectDescription,
+        coverImage: projectCoverImage || null,
+        images: projectScreenshots,
+        technologies: technologies.length > 0 ? technologies : ["TypeScript"],
+        githubUrl: projectGithubUrl.trim() || "",
+        liveUrl: projectLiveUrl.trim() || "",
+        category: projectCategoryId || null,
+        featured: projectFeatured,
+        status: projectStatus,
+        order: Number(projectOrder) || 0,
+        seoTitle: projectSeoTitle.trim() || undefined,
+        seoDescription: projectSeoDescription.trim() || undefined,
       };
 
-      if (editingProject.id) {
-        await apiRequest(`/api/projects/${editingProject.id}`, {
+      if (editingProjectId) {
+        await apiFetch(`/api/admin/projects/${editingProjectId}`, {
           method: "PUT",
           body: JSON.stringify(payload),
         });
-        notify("Project updated.");
+        pushToast("success", "Project updated", `"${projectTitle}" has been updated.`);
       } else {
-        await apiRequest("/api/projects", {
+        await apiFetch("/api/admin/projects", {
           method: "POST",
           body: JSON.stringify(payload),
         });
-        notify("Project created.");
+        pushToast("success", "Project created", `"${projectTitle}" added to portfolio.`);
       }
-      setEditingProject(null);
-      await loadTabContent("projects");
+      setProjectEditorOpen(false);
+      await Promise.all([fetchProjects(projectPage), fetchOverviewAndTaxonomy()]);
     } catch (err) {
-      notify(err instanceof Error ? err.message : "Failed to save project", "error");
+      pushToast(
+        "error",
+        "Failed to save project",
+        err instanceof Error ? err.message : "Validation error"
+      );
+    } finally {
+      setSaving(false);
     }
   };
 
-  const deleteProjectItem = async (id: string) => {
-    if (!window.confirm("Delete this project permanently?")) return;
-    try {
-      await apiRequest(`/api/projects/${id}`, { method: "DELETE" });
-      notify("Project deleted.");
-      await loadTabContent("projects");
-    } catch (err) {
-      notify(err instanceof Error ? err.message : "Failed to delete project", "error");
-    }
+  const confirmDeleteProject = (proj: ProjectItem) => {
+    askConfirm({
+      title: "Delete Portfolio Project",
+      description: `Are you sure you want to permanently delete "${proj.title}"?`,
+      confirmLabel: "Delete Project",
+      onConfirm: async () => {
+        setConfirmBusy(true);
+        try {
+          await apiFetch(`/api/admin/projects/${proj.id}`, { method: "DELETE" });
+          pushToast("success", "Project deleted", `"${proj.title}" was deleted.`);
+          if (editingProjectId === proj.id) setProjectEditorOpen(false);
+          setConfirmState(null);
+          await Promise.all([fetchProjects(projectPage), fetchOverviewAndTaxonomy()]);
+        } catch (err) {
+          pushToast(
+            "error",
+            "Delete failed",
+            err instanceof Error ? err.message : "Could not delete project"
+          );
+        } finally {
+          setConfirmBusy(false);
+        }
+      },
+    });
   };
 
-  // ── Taxonomy handlers ──────────────────────────────────────────────────────
-  const createCategory = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newCategoryName.trim()) return;
-    try {
-      await apiRequest("/api/categories", {
-        method: "POST",
-        body: JSON.stringify({
-          name: newCategoryName.trim(),
-          type: newCategoryType,
-          description: newCategoryDesc.trim() || undefined,
-        }),
-      });
-      setNewCategoryName("");
-      setNewCategoryDesc("");
-      notify("Category created.");
-      await loadTaxonomy();
-    } catch (err) {
-      notify(err instanceof Error ? err.message : "Failed to create category", "error");
-    }
-  };
-
-  const removeCategory = async (id: string) => {
-    try {
-      await apiRequest(`/api/categories/${id}`, { method: "DELETE" });
-      notify("Category deleted.");
-      await loadTaxonomy();
-    } catch (err) {
-      notify(err instanceof Error ? err.message : "Failed to delete category", "error");
-    }
-  };
-
-  const createTag = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTagName.trim()) return;
-    try {
-      await apiRequest("/api/tags", {
-        method: "POST",
-        body: JSON.stringify({ name: newTagName.trim() }),
-      });
-      setNewTagName("");
-      notify("Tag created.");
-      await loadTaxonomy();
-    } catch (err) {
-      notify(err instanceof Error ? err.message : "Failed to create tag", "error");
-    }
-  };
-
-  const removeTag = async (id: string) => {
-    try {
-      await apiRequest(`/api/tags/${id}`, { method: "DELETE" });
-      notify("Tag deleted.");
-      await loadTaxonomy();
-    } catch (err) {
-      notify(err instanceof Error ? err.message : "Failed to delete tag", "error");
-    }
-  };
-
-  // ── User Management handlers ───────────────────────────────────────────────
-  const inspectUser = async (id: string) => {
-    try {
-      const res = await apiRequest<{
-        user: User;
-        sessions: SessionInfo[];
-        recentActivity: AuditLogItem[];
-      }>(`/api/admin/users/${id}`);
-      setSelectedUserDetail(res.data);
-    } catch (err) {
-      notify(err instanceof Error ? err.message : "Failed to load user details", "error");
-    }
-  };
-
-  const changeUserStatus = async (
-    id: string,
-    payload: { status?: "ACTIVE" | "SUSPENDED" | "PENDING"; emailVerified?: boolean; revokeSessions?: boolean }
+  // Taxonomy Handlers
+  const handleSaveCategory = async (
+    payload: { name: string; slug: string; type: "BLOG" | "PROJECT"; description?: string },
+    editingId?: string
   ) => {
     try {
-      await apiRequest(`/api/admin/users/${id}/status`, {
-        method: "PATCH",
-        body: JSON.stringify(payload),
-      });
-      notify("User account updated.");
-      await loadTabContent("users");
-      if (selectedUserDetail && selectedUserDetail.user.id === id) {
-        await inspectUser(id);
+      if (editingId) {
+        await apiFetch(`/api/categories/${editingId}`, {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        });
+        pushToast("success", "Category updated", `"${payload.name}" updated.`);
+      } else {
+        await apiFetch("/api/categories", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        pushToast("success", "Category created", `"${payload.name}" created.`);
       }
+      await fetchOverviewAndTaxonomy();
     } catch (err) {
-      notify(err instanceof Error ? err.message : "Failed to update user status", "error");
+      pushToast(
+        "error",
+        "Category save failed",
+        err instanceof Error ? err.message : "Could not save category"
+      );
     }
   };
 
-  const revokeAllUserSessions = async (id: string) => {
+  const confirmDeleteCategory = (cat: CategoryItem) => {
+    askConfirm({
+      title: "Delete Category",
+      description: `Delete category "${cat.name}" (/${cat.slug})?`,
+      confirmLabel: "Delete Category",
+      onConfirm: async () => {
+        setConfirmBusy(true);
+        try {
+          await apiFetch(`/api/categories/${cat.id}`, { method: "DELETE" });
+          pushToast("success", "Category deleted", `"${cat.name}" removed.`);
+          setConfirmState(null);
+          await fetchOverviewAndTaxonomy();
+        } catch (err) {
+          pushToast("error", "Delete failed", err instanceof Error ? err.message : "Error");
+        } finally {
+          setConfirmBusy(false);
+        }
+      },
+    });
+  };
+
+  const handleSaveTag = async (payload: { name: string; slug: string }, editingId?: string) => {
     try {
-      const res = await apiRequest<{ revokedSessions: number }>(`/api/admin/users/${id}/sessions`, {
-        method: "DELETE",
-      });
-      notify(`Revoked ${res.data.revokedSessions} active session(s).`);
-      if (selectedUserDetail && selectedUserDetail.user.id === id) {
-        await inspectUser(id);
+      if (editingId) {
+        await apiFetch(`/api/tags/${editingId}`, {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        });
+        pushToast("success", "Tag updated", `#${payload.name} updated.`);
+      } else {
+        await apiFetch("/api/tags", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        pushToast("success", "Tag created", `#${payload.name} created.`);
       }
+      await fetchOverviewAndTaxonomy();
     } catch (err) {
-      notify(err instanceof Error ? err.message : "Failed to revoke sessions", "error");
+      pushToast(
+        "error",
+        "Tag save failed",
+        err instanceof Error ? err.message : "Could not save tag"
+      );
     }
   };
 
-  // ── Media Upload handlers ──────────────────────────────────────────────────
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const confirmDeleteTag = (tag: TagItem) => {
+    askConfirm({
+      title: "Delete Tag",
+      description: `Delete tag "#${tag.name}"?`,
+      confirmLabel: "Delete Tag",
+      onConfirm: async () => {
+        setConfirmBusy(true);
+        try {
+          await apiFetch(`/api/tags/${tag.id}`, { method: "DELETE" });
+          pushToast("success", "Tag deleted", `#${tag.name} removed.`);
+          setConfirmState(null);
+          await fetchOverviewAndTaxonomy();
+        } catch (err) {
+          pushToast("error", "Delete failed", err instanceof Error ? err.message : "Error");
+        } finally {
+          setConfirmBusy(false);
+        }
+      },
+    });
+  };
+
+  // Media Handlers
+  const handleUploadMediaFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploadingMedia(true);
     try {
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = String(reader.result ?? "");
-          const commaIndex = result.indexOf(",");
-          resolve(commaIndex >= 0 ? result.slice(commaIndex + 1) : result);
-        };
-        reader.onerror = () => reject(new Error("Failed to read file"));
-        reader.readAsDataURL(file);
+      await apiUploadMediaFile(file, {
+        folder: uploadFolder,
+        alt: uploadAlt.trim() || file.name,
       });
-
-      await apiRequest("/api/admin/media/upload", {
-        method: "POST",
-        body: JSON.stringify({
-          fileBase64: base64,
-          claimedMimeType: file.type || "image/png",
-          originalFilename: file.name,
-          folder: mediaFolder,
-          alt: mediaAlt.trim() || file.name,
-        }),
-      });
-      setMediaAlt("");
-      e.target.value = "";
-      notify("Image verified by magic bytes and uploaded.");
-      await loadTabContent("media");
+      setUploadAlt("");
+      pushToast("success", "Media asset uploaded", `${file.name} verified and stored.`);
+      await Promise.all([fetchMedia(), fetchOverviewAndTaxonomy()]);
     } catch (err) {
-      notify(err instanceof Error ? err.message : "Image upload rejected", "error");
+      pushToast(
+        "error",
+        "Upload failed",
+        err instanceof Error ? err.message : "File validation failed"
+      );
     } finally {
       setUploadingMedia(false);
+      e.target.value = "";
     }
   };
 
-  const deleteMedia = async (id: string) => {
-    try {
-      await apiRequest(`/api/admin/media/${id}`, { method: "DELETE" });
-      notify("Media asset deleted.");
-      await loadTabContent("media");
-    } catch (err) {
-      notify(err instanceof Error ? err.message : "Cannot delete media asset", "error");
-    }
+  const confirmDeleteMedia = (item: MediaItem) => {
+    askConfirm({
+      title: "Delete Media Asset",
+      description: `Permanently delete "${item.alt || item.publicId}" from Media Library and Cloudinary?`,
+      confirmLabel: "Delete Asset",
+      onConfirm: async () => {
+        setConfirmBusy(true);
+        try {
+          await apiFetch(`/api/admin/media/${item.id}`, { method: "DELETE" });
+          pushToast("success", "Asset deleted", `${item.publicId} removed.`);
+          setConfirmState(null);
+          await Promise.all([fetchMedia(), fetchOverviewAndTaxonomy()]);
+        } catch (err) {
+          pushToast("error", "Delete failed", err instanceof Error ? err.message : "Error");
+        } finally {
+          setConfirmBusy(false);
+        }
+      },
+    });
   };
 
-  // ── Contact Messages handlers ──────────────────────────────────────────────
-  const updateMessageStatus = async (id: string, status: "NEW" | "READ" | "ARCHIVED") => {
+  // Messages Handlers
+  const handleUpdateMessageStatus = async (
+    id: string,
+    status: "NEW" | "READ" | "ARCHIVED"
+  ) => {
     try {
-      await apiRequest(`/api/admin/messages/${id}`, {
+      await apiFetch(`/api/admin/messages/${id}`, {
         method: "PATCH",
         body: JSON.stringify({ status }),
       });
-      notify(`Message marked as ${status}.`);
-      await loadTabContent("messages");
+      pushToast("success", "Message updated", `Marked as ${status}.`);
+      await Promise.all([fetchMessages(), fetchOverviewAndTaxonomy()]);
     } catch (err) {
-      notify(err instanceof Error ? err.message : "Failed to update message", "error");
+      pushToast("error", "Update failed", err instanceof Error ? err.message : "Error");
     }
   };
 
-  // ── Settings handler ───────────────────────────────────────────────────────
-  const saveSettings = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const parsedSkills = JSON.parse(skillsJson || "[]") as SiteSettingsData["skills"];
-      const parsedInterests = interestsText
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean);
+  const confirmDeleteMessage = (msg: ContactMessageItem) => {
+    askConfirm({
+      title: "Delete Contact Message",
+      description: `Permanently delete inquiry "${msg.subject}" from ${msg.name} (${msg.email})?`,
+      confirmLabel: "Delete Message",
+      onConfirm: async () => {
+        setConfirmBusy(true);
+        try {
+          await apiFetch(`/api/admin/messages/${msg.id}`, { method: "DELETE" });
+          pushToast("success", "Message deleted", "Inquiry removed from inbox.");
+          setConfirmState(null);
+          await Promise.all([fetchMessages(), fetchOverviewAndTaxonomy()]);
+        } catch (err) {
+          pushToast("error", "Delete failed", err instanceof Error ? err.message : "Error");
+        } finally {
+          setConfirmBusy(false);
+        }
+      },
+    });
+  };
 
-      const payload: Partial<SiteSettingsData> = {
-        siteTitle: siteSettings.siteTitle,
-        tagline: siteSettings.tagline,
-        heroTitle: siteSettings.heroTitle,
-        heroDescription: siteSettings.heroDescription,
-        biography: siteSettings.biography,
-        location: siteSettings.location,
-        cvUrl: siteSettings.cvUrl,
-        socialLinks: siteSettings.socialLinks,
-        skills: parsedSkills,
-        careerInterests: parsedInterests,
-        seo: siteSettings.seo,
-      };
-
-      await apiRequest("/api/admin/settings", {
-        method: "PUT",
-        body: JSON.stringify(payload),
+  // User Management Handlers
+  const handleUpdateUser = (
+    u: User,
+    patch: { status?: "ACTIVE" | "SUSPENDED" | "PENDING"; emailVerified?: boolean }
+  ) => {
+    if (patch.status === "SUSPENDED") {
+      askConfirm({
+        title: `Suspend Account: ${u.name}`,
+        description: `Suspending ${u.email} will immediately block access and revoke all active sessions.`,
+        confirmLabel: "Suspend User",
+        onConfirm: async () => {
+          setConfirmBusy(true);
+          try {
+            await apiFetch(`/api/admin/users/${u.id}/status`, {
+              method: "PATCH",
+              body: JSON.stringify(patch),
+            });
+            pushToast("success", "User suspended", `${u.email} has been suspended.`);
+            setConfirmState(null);
+            await Promise.all([fetchUsers(), fetchOverviewAndTaxonomy()]);
+          } catch (err) {
+            pushToast("error", "Update failed", err instanceof Error ? err.message : "Error");
+          } finally {
+            setConfirmBusy(false);
+          }
+        },
       });
-      notify("Site settings saved.");
-    } catch (err) {
-      notify(err instanceof Error ? err.message : "Failed to save settings", "error");
+      return;
+    }
+
+    void (async () => {
+      try {
+        await apiFetch(`/api/admin/users/${u.id}/status`, {
+          method: "PATCH",
+          body: JSON.stringify(patch),
+        });
+        pushToast("success", "User account updated", `${u.email} updated.`);
+        await Promise.all([fetchUsers(), fetchOverviewAndTaxonomy()]);
+      } catch (err) {
+        pushToast("error", "Update failed", err instanceof Error ? err.message : "Error");
+      }
+    })();
+  };
+
+  const handleInspectUser = async (u: User) => {
+    setInspectedUser(u);
+    try {
+      const [detailsRes, logsRes] = await Promise.all([
+        apiFetch<{ user: User; sessions: SessionInfo[] }>(`/api/admin/users/${u.id}`),
+        apiFetch<{ logs: AuditLogItem[] }>(`/api/admin/audit-logs?limit=25`),
+      ]);
+      setInspectedSessions(detailsRes.data.sessions ?? []);
+      setInspectedActivity(
+        (logsRes.data.logs ?? []).filter(
+          (l: AuditLogItem) => l.actorEmail === u.email || l.targetId === u.id
+        )
+      );
+    } catch {
+      setInspectedSessions([]);
+      setInspectedActivity([]);
     }
   };
 
-  const navItems: { id: AdminTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-    { id: "overview", label: "Overview", icon: LayoutDashboard },
-    { id: "blogs", label: "Blog Articles", icon: FileText },
-    { id: "projects", label: "Projects", icon: FolderKanban },
-    { id: "taxonomy", label: "Categories & Tags", icon: Tags },
-    { id: "users", label: "Users", icon: Users },
-    { id: "media", label: "Media Library", icon: ImageIcon },
-    { id: "messages", label: "Contact Messages", icon: Mail },
-    { id: "settings", label: "Website Settings", icon: Settings },
-    { id: "audit", label: "Audit Logs", icon: ShieldAlert },
+  const handleRevokeUserSessions = (u: User) => {
+    askConfirm({
+      title: "Revoke All User Sessions",
+      description: `Force sign-out all active devices for ${u.email}?`,
+      confirmLabel: "Revoke Sessions",
+      onConfirm: async () => {
+        setConfirmBusy(true);
+        try {
+          await apiFetch(`/api/admin/users/${u.id}/sessions`, { method: "DELETE" });
+          pushToast("success", "Sessions revoked", `All sessions terminated for ${u.email}.`);
+          setInspectedSessions([]);
+          setConfirmState(null);
+        } catch (err) {
+          pushToast("error", "Revoke failed", err instanceof Error ? err.message : "Error");
+        } finally {
+          setConfirmBusy(false);
+        }
+      },
+    });
+  };
+
+  // Site & SEO Settings Save Handler
+  const handleSaveSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!settings) return;
+    setSaving(true);
+    try {
+      const res = await apiFetch<{ settings: SiteSettingsData }>("/api/admin/settings", {
+        method: "PUT",
+        body: JSON.stringify(settings),
+      });
+      setSettings(res.data.settings);
+      pushToast("success", "Settings saved", "Site & SEO configuration updated.");
+    } catch (err) {
+      pushToast(
+        "error",
+        "Settings save failed",
+        err instanceof Error ? err.message : "Validation error"
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Media Picker Selection Callback
+  const handleMediaPickerSelect = (img: ImageRef) => {
+    if (mediaPickerTarget === "blogCover") {
+      setBlogCoverImage(img);
+    } else if (mediaPickerTarget === "projectThumb") {
+      setProjectCoverImage(img);
+    } else if (mediaPickerTarget === "projectScreenshot") {
+      setProjectScreenshots((prev) => [...prev, img]);
+    } else if (mediaPickerTarget === "profile" && settings) {
+      setSettings({ ...settings, profileImage: img });
+    } else if (mediaPickerTarget === "og" && settings) {
+      setSettings({ ...settings, seo: { ...settings.seo, ogImage: img } });
+    }
+    setMediaPickerTarget(null);
+  };
+
+  const unreadMessagesCount = overview?.stats.messages.unread ?? 0;
+
+  const navGroups: Array<{
+    label: string;
+    items: Array<{
+      id: AdminNavSection;
+      label: string;
+      icon: typeof LayoutDashboard;
+      badge?: number;
+      highlightBadge?: boolean;
+    }>;
+  }> = [
+    {
+      label: "Overview",
+      items: [
+        { id: "dashboard" as const, label: "Dashboard", icon: LayoutDashboard },
+      ],
+    },
+    {
+      label: "Content Management",
+      items: [
+        {
+          id: "blogs" as const,
+          label: "Blog Posts",
+          icon: FileText,
+          badge: overview?.stats.blogs.total,
+        },
+        {
+          id: "projects" as const,
+          label: "Projects",
+          icon: FolderKanban,
+          badge: overview?.stats.projects.total,
+        },
+        {
+          id: "categories" as const,
+          label: "Categories",
+          icon: Folder,
+          badge: categories.length,
+        },
+        {
+          id: "tags" as const,
+          label: "Tags",
+          icon: Tag,
+          badge: tags.length,
+        },
+        {
+          id: "media" as const,
+          label: "Media Library",
+          icon: ImageIcon,
+          badge: overview?.stats.media.total,
+        },
+      ],
+    },
+    {
+      label: "Communication",
+      items: [
+        {
+          id: "messages" as const,
+          label: "Contact Messages",
+          icon: MessageSquare,
+          badge: unreadMessagesCount > 0 ? unreadMessagesCount : undefined,
+          highlightBadge: unreadMessagesCount > 0,
+        },
+      ],
+    },
+    {
+      label: "User Management",
+      items: [
+        {
+          id: "users" as const,
+          label: "Users",
+          icon: Users,
+          badge: overview?.stats.users.total,
+        },
+      ],
+    },
+    {
+      label: "System",
+      items: [
+        { id: "analytics" as const, label: "Analytics", icon: BarChart3 },
+        { id: "settings" as const, label: "Site Settings", icon: Settings },
+        { id: "seo" as const, label: "SEO Settings", icon: Globe },
+        { id: "audit" as const, label: "Audit Logs", icon: ShieldCheck },
+      ],
+    },
   ];
 
-  return (
-    <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-      <div className="mb-8 flex flex-col justify-between gap-4 border-b border-white/15 pb-6 sm:flex-row sm:items-center">
-        <div>
-          <span className="inline-flex items-center gap-1.5 border border-white/25 bg-white/5 px-2.5 py-1 font-mono text-xs uppercase tracking-widest text-white/80">
-            <Lock className="h-3 w-3" /> Administrator · Verified Session
-          </span>
-          <h1 className="mt-2 text-2xl font-bold tracking-tight text-white sm:text-3xl">
-            Dezaakir Control Center
-          </h1>
+  const sectionTitles: Record<AdminNavSection, { title: string; subtitle: string }> = {
+    dashboard: {
+      title: "Executive Platform Overview",
+      subtitle: "Real-time publishing metrics, 6-month trends, and recent operational activity",
+    },
+    blogs: {
+      title: "Blog Administration & Technical Publishing",
+      subtitle: "Author, schedule, preview, and manage technical articles and SEO metadata",
+    },
+    projects: {
+      title: "Engineering Portfolio Management",
+      subtitle: "Manage case studies, architecture descriptions, screenshots, and live deployments",
+    },
+    categories: {
+      title: "Content Categories",
+      subtitle: "Organize blog posts and portfolio projects into structured taxonomies",
+    },
+    tags: {
+      title: "Topic Tags",
+      subtitle: "Manage cross-cutting technical tags and inspect article usage counts",
+    },
+    media: {
+      title: "Centralized Media Library",
+      subtitle: "Server-validated image uploads and Cloudinary CDN asset management",
+    },
+    messages: {
+      title: "Contact Inquiries & Communication",
+      subtitle: "Read, respond to, archive, and manage incoming messages",
+    },
+    users: {
+      title: "User & Access Administration",
+      subtitle: "Manage registered accounts, verification status, roles, and active sessions",
+    },
+    analytics: {
+      title: "Platform Analytics & Publishing Trends",
+      subtitle: "6-month MongoDB time-series aggregations across content, users, and inquiries",
+    },
+    settings: {
+      title: "Site Settings & Author Profile",
+      subtitle: "Configure platform identity, biography, skills, social links, and system status",
+    },
+    seo: {
+      title: "SEO & OpenGraph Configuration",
+      subtitle: "Manage global search metadata, social cards, sitemaps, and per-page SEO readiness",
+    },
+    audit: {
+      title: "Security & Administrative Audit Trail",
+      subtitle: "Immutable record of authentication, content mutations, and access events",
+    },
+  };
+
+  const renderSidebarContent = (isMobile = false) => (
+    <div className="flex h-full flex-col justify-between bg-navy text-white">
+      <div>
+        {/* Brand Header */}
+        <div className="flex h-16 items-center justify-between border-b border-white/15 px-4">
+          <Link
+            href="/"
+            className="flex items-center gap-3 overflow-hidden"
+            title="Dezaakir — View Public Website"
+          >
+            <Image
+              src="/logo.png"
+              alt="Dezaakir Logo"
+              width={34}
+              height={34}
+              priority
+              className="h-8 w-auto shrink-0 object-contain"
+            />
+            {(!sidebarCollapsed || isMobile) && (
+              <div className="leading-tight">
+                <span className="block text-sm font-bold tracking-tight text-white">
+                  Dezaakir
+                </span>
+                <span className="block font-mono text-[9px] uppercase tracking-widest text-white/55">
+                  Admin Console
+                </span>
+              </div>
+            )}
+          </Link>
+
+          {isMobile ? (
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(false)}
+              className="border border-white/20 p-1.5 text-white/75 hover:border-white hover:text-white"
+              aria-label="Close navigation drawer"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed((prev) => !prev)}
+              className="border border-white/15 p-1.5 text-white/70 transition hover:border-white hover:text-white"
+              title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+              aria-label={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+            >
+              {sidebarCollapsed ? (
+                <PanelLeftOpen className="h-4 w-4" />
+              ) : (
+                <PanelLeftClose className="h-4 w-4" />
+              )}
+            </button>
+          )}
         </div>
-        <button
-          type="button"
-          onClick={() => void loadTabContent(activeTab)}
-          className="inline-flex items-center gap-2 border border-white/25 bg-navy px-4 py-2 text-xs font-medium uppercase tracking-wider text-white transition hover:border-white hover:bg-white hover:text-navy"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-          Refresh
-        </button>
+
+        {/* Navigation Groups */}
+        <nav className="max-h-[calc(100vh-11rem)] space-y-5 overflow-y-auto px-3 py-4" aria-label="Admin sidebar navigation">
+          {navGroups.map((group) => (
+            <div key={group.label}>
+              {(!sidebarCollapsed || isMobile) && (
+                <p className="mb-1.5 px-2.5 font-mono text-[10px] font-semibold uppercase tracking-widest text-white/45">
+                  {group.label}
+                </p>
+              )}
+              <div className="space-y-1">
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+                  const active = activeSection === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      title={sidebarCollapsed && !isMobile ? item.label : undefined}
+                      onClick={() => {
+                        setActiveSection(item.id);
+                        setMobileMenuOpen(false);
+                      }}
+                      className={`group flex w-full items-center justify-between px-2.5 py-2 text-xs font-medium transition ${
+                        active
+                          ? "bg-white font-semibold text-navy"
+                          : "text-white/75 hover:bg-white/10 hover:text-white"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Icon className="h-4 w-4 shrink-0" />
+                        {(!sidebarCollapsed || isMobile) && <span>{item.label}</span>}
+                      </div>
+                      {(!sidebarCollapsed || isMobile) && item.badge !== undefined && (
+                        <span
+                          className={`px-1.5 py-0.5 font-mono text-[10px] ${
+                            active
+                              ? "bg-navy text-white"
+                              : "highlightBadge" in item && item.highlightBadge
+                                ? "bg-white font-bold text-navy"
+                                : "bg-white/10 text-white/75"
+                          }`}
+                        >
+                          {item.badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </nav>
       </div>
 
-      {banner && (
-        <div
-          className={`mb-6 flex items-center justify-between border px-4 py-3 text-sm ${
-            banner.type === "error"
-              ? "border-white bg-white/10 text-white"
-              : "border-white/30 bg-white/5 text-white"
-          }`}
-        >
-          <span>{banner.text}</span>
+      {/* Logged-in Administrator Footer */}
+      <div className="border-t border-white/15 p-3">
+        {(!sidebarCollapsed || isMobile) && currentAdmin && (
+          <div className="mb-2.5 border border-white/15 bg-white/[0.02] px-3 py-2">
+            <p className="truncate text-xs font-bold text-white">{currentAdmin.name}</p>
+            <p className="truncate font-mono text-[10px] text-white/60">{currentAdmin.email}</p>
+          </div>
+        )}
+        <div className="flex items-center gap-1.5">
+          <Link
+            href="/"
+            title="View Live Website"
+            className="flex flex-1 items-center justify-center gap-1.5 border border-white/20 py-2 text-xs font-semibold text-white/80 transition hover:border-white hover:text-white"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            {(!sidebarCollapsed || isMobile) && <span>Live Site</span>}
+          </Link>
           <button
             type="button"
-            onClick={() => setBanner(null)}
-            className="ml-4 text-white/70 hover:text-white"
+            title="Sign Out"
+            onClick={async () => {
+              await logout();
+              router.push("/login");
+            }}
+            className="flex flex-1 items-center justify-center gap-1.5 bg-white py-2 text-xs font-bold text-navy transition hover:bg-white/90"
           >
-            <X className="h-4 w-4" />
+            <LogOut className="h-3.5 w-3.5" />
+            {(!sidebarCollapsed || isMobile) && <span>Logout</span>}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex min-h-dvh bg-navy text-white">
+      {/* Desktop Collapsible Sidebar */}
+      <aside
+        className={`sticky top-0 hidden h-dvh shrink-0 border-r border-white/15 transition-all duration-200 lg:block ${
+          sidebarCollapsed ? "w-16" : "w-64"
+        }`}
+      >
+        {renderSidebarContent(false)}
+      </aside>
+
+      {/* Mobile Navigation Drawer */}
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-50 flex lg:hidden" role="dialog" aria-modal="true">
+          <div
+            className="fixed inset-0 bg-navy/80 backdrop-blur-xs"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+          <div className="relative z-10 w-72 border-r border-white/20 bg-navy">
+            {renderSidebarContent(true)}
+          </div>
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
-        {/* Sidebar Navigation */}
-        <aside className="lg:col-span-3">
-          <nav className="flex flex-col space-y-1 border border-white/15 bg-white/[0.02] p-2">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setActiveTab(item.id)}
-                  className={`flex items-center gap-3 px-3.5 py-2.5 text-left text-sm font-medium transition ${
-                    isActive
-                      ? "bg-white text-navy font-semibold"
-                      : "text-white/75 hover:bg-white/5 hover:text-white"
-                  }`}
-                >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
-          </nav>
-        </aside>
-
-        {/* Main Workspace */}
-        <section className="lg:col-span-9">
-          {/* 1. OVERVIEW TAB */}
-          {activeTab === "overview" && (
-            <div className="space-y-8">
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                {[
-                  { label: "Total Articles", value: stats?.totalBlogs ?? 0 },
-                  { label: "Published Articles", value: stats?.publishedBlogs ?? 0 },
-                  { label: "Draft Articles", value: stats?.draftBlogs ?? 0 },
-                  { label: "Total Projects", value: stats?.totalProjects ?? 0 },
-                  { label: "Registered Users", value: stats?.totalUsers ?? 0 },
-                  { label: "Unverified Users", value: stats?.unverifiedUsers ?? 0 },
-                  { label: "Contact Messages", value: stats?.totalMessages ?? 0 },
-                  { label: "Unread Messages", value: stats?.unreadMessages ?? 0 },
-                ].map((metric) => (
-                  <div
-                    key={metric.label}
-                    className="border border-white/15 bg-white/[0.02] p-4"
-                  >
-                    <p className="font-mono text-xs uppercase tracking-wider text-white/60">
-                      {metric.label}
-                    </p>
-                    <p className="mt-2 text-2xl font-bold text-white">{metric.value}</p>
-                  </div>
-                ))}
+      {/* Main Workspace */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* Top Navigation Bar */}
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-white/15 bg-navy/95 px-6 backdrop-blur-md">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(true)}
+              className="border border-white/20 p-2 text-white lg:hidden"
+              aria-label="Open navigation menu"
+            >
+              <Menu className="h-4 w-4" />
+            </button>
+            <div>
+              <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-white/55">
+                <span>Dezaakir Admin</span>
+                <span>/</span>
+                <span className="text-white">{activeSection}</span>
               </div>
-
-              <div className="border border-white/15 bg-white/[0.02] p-6">
-                <h2 className="text-base font-semibold uppercase tracking-wider text-white">
-                  Recent Administrative & Security Activity
-                </h2>
-                <div className="mt-4 divide-y divide-white/10">
-                  {recentActivity.length === 0 ? (
-                    <p className="py-4 text-sm text-white/60">No audit events recorded yet.</p>
-                  ) : (
-                    recentActivity.map((log) => (
-                      <div
-                        key={log.id}
-                        className="flex flex-col justify-between gap-2 py-3 text-xs sm:flex-row sm:items-center"
-                      >
-                        <div className="space-y-0.5">
-                          <span className="inline-block border border-white/25 px-1.5 py-0.5 font-mono text-[10px] uppercase text-white/80">
-                            {log.category} · {log.outcome}
-                          </span>
-                          <p className="font-mono text-white">
-                            {log.action}{" "}
-                            {log.targetType ? `→ ${log.targetType} (${log.targetId ?? ""})` : ""}
-                          </p>
-                        </div>
-                        <span className="font-mono text-white/60">
-                          {new Date(log.createdAt).toLocaleString()}
-                        </span>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
+              <h1 className="text-sm font-bold text-white sm:text-base">
+                {sectionTitles[activeSection].title}
+              </h1>
             </div>
-          )}
+          </div>
 
-          {/* 2. BLOG MANAGEMENT TAB */}
-          {activeTab === "blogs" && (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={openNewBlogEditor}
+              className="hidden items-center gap-1.5 bg-white px-3.5 py-2 text-xs font-bold tracking-wider text-navy uppercase transition hover:bg-white/90 sm:inline-flex"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              New Article
+            </button>
+            <button
+              type="button"
+              onClick={openNewProjectEditor}
+              className="hidden items-center gap-1.5 border border-white/25 px-3.5 py-2 text-xs font-semibold tracking-wider text-white uppercase transition hover:border-white md:inline-flex"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              New Project
+            </button>
+            {unreadMessagesCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setActiveSection("messages")}
+                className="inline-flex items-center gap-1.5 border border-white bg-white/10 px-3 py-2 font-mono text-xs font-bold text-white"
+                title="Unread Contact Inquiries"
+              >
+                <Mail className="h-3.5 w-3.5" />
+                <span>{unreadMessagesCount}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => void loadAllDashboardData()}
+              disabled={refreshing}
+              className="inline-flex items-center gap-1.5 border border-white/20 px-3 py-2 text-xs font-medium text-white/80 transition hover:border-white hover:text-white disabled:opacity-50"
+              title="Refresh Live Database Telemetry"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+              <span className="hidden sm:inline">Sync</span>
+            </button>
+          </div>
+        </header>
+
+        {/* Workspace Body */}
+        <main className="mx-auto w-full max-w-7xl flex-1 px-6 py-8">
+          {initialLoading ? (
             <div className="space-y-6">
-              {!editingBlog ? (
-                <>
-                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-                    <div className="flex flex-1 items-center gap-2">
-                      <div className="relative flex-1">
-                        <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-white/50" />
-                        <input
-                          type="text"
-                          value={blogSearch}
-                          onChange={(e) => setBlogSearch(e.target.value)}
-                          placeholder="Search articles..."
-                          className="w-full border border-white/20 bg-navy py-2 pl-9 pr-3 text-sm text-white placeholder:text-white/40 focus:border-white focus:outline-none"
-                        />
-                      </div>
-                      <select
-                        value={blogStatusFilter}
-                        onChange={(e) => setBlogStatusFilter(e.target.value)}
-                        className="border border-white/20 bg-navy px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
-                      >
-                        <option value="">All Statuses</option>
-                        <option value="PUBLISHED">Published</option>
-                        <option value="DRAFT">Draft</option>
-                        <option value="SCHEDULED">Scheduled</option>
-                      </select>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={openNewBlog}
-                      className="inline-flex items-center gap-2 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wider text-navy transition hover:bg-white/90"
-                    >
-                      <Plus className="h-4 w-4" /> New Article
-                    </button>
-                  </div>
-
-                  <div className="divide-y divide-white/10 border border-white/15 bg-white/[0.02]">
-                    {blogs.length === 0 ? (
-                      <p className="p-6 text-sm text-white/60">No articles found.</p>
-                    ) : (
-                      blogs.map((blog) => {
-                        const blogId =
-                          blog.id || (blog as unknown as { _id?: string })._id || "";
-                        return (
-                          <div
-                            key={blogId}
-                            className="flex flex-col justify-between gap-4 p-4 sm:flex-row sm:items-center"
-                          >
-                            <div className="space-y-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="border border-white/30 px-2 py-0.5 font-mono text-[10px] uppercase text-white">
-                                  {blog.status}
-                                </span>
-                                {blog.featured && (
-                                  <span className="bg-white px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-navy">
-                                    Featured
-                                  </span>
-                                )}
-                                <span className="font-mono text-xs text-white/60">
-                                  /{blog.slug} · {blog.readingTime} min read
-                                </span>
-                              </div>
-                              <h3 className="text-base font-semibold text-white">{blog.title}</h3>
-                              <p className="line-clamp-1 text-xs text-white/70">{blog.excerpt}</p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => openEditBlog(blog)}
-                                className="inline-flex items-center gap-1 border border-white/25 px-3 py-1.5 text-xs text-white hover:border-white"
-                              >
-                                <Edit3 className="h-3.5 w-3.5" /> Edit
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => void deleteBlogItem(blogId)}
-                                className="inline-flex items-center gap-1 border border-white/25 px-3 py-1.5 text-xs text-white/80 hover:border-white hover:text-white"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" /> Delete
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </>
-              ) : (
-                <form
-                  onSubmit={(e) => void saveBlog(e)}
-                  className="space-y-5 border border-white/15 bg-white/[0.02] p-6"
-                >
-                  <div className="flex items-center justify-between border-b border-white/15 pb-4">
-                    <h2 className="text-lg font-semibold text-white">
-                      {editingBlog.id ? "Edit Article" : "Create Article"}
-                    </h2>
-                    <button
-                      type="button"
-                      onClick={() => setEditingBlog(null)}
-                      className="border border-white/25 px-3 py-1 text-xs text-white hover:border-white"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div>
-                      <label className="block text-xs font-mono uppercase text-white/70">
-                        Title *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={editingBlog.title}
-                        onChange={(e) =>
-                          setEditingBlog({ ...editingBlog, title: e.target.value })
-                        }
-                        className="mt-1 w-full border border-white/20 bg-navy px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-mono uppercase text-white/70">
-                        Slug (optional — auto-generated if empty)
-                      </label>
-                      <input
-                        type="text"
-                        value={editingBlog.slug}
-                        onChange={(e) =>
-                          setEditingBlog({ ...editingBlog, slug: e.target.value })
-                        }
-                        className="mt-1 w-full border border-white/20 bg-navy px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-mono uppercase text-white/70">
-                      Excerpt / Summary *
-                    </label>
-                    <textarea
-                      required
-                      rows={2}
-                      value={editingBlog.excerpt}
-                      onChange={(e) =>
-                        setEditingBlog({ ...editingBlog, excerpt: e.target.value })
-                      }
-                      className="mt-1 w-full border border-white/20 bg-navy px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-1 block text-xs font-mono uppercase text-white/70">
-                      Article Body (TipTap Rich Text — Sanitized on Save) *
-                    </label>
-                    <RichTextEditor
-                      value={editingBlog.content}
-                      onChange={(html) => setEditingBlog({ ...editingBlog, content: html })}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    <div>
-                      <label className="block text-xs font-mono uppercase text-white/70">
-                        Status
-                      </label>
-                      <select
-                        value={editingBlog.status}
-                        onChange={(e) =>
-                          setEditingBlog({
-                            ...editingBlog,
-                            status: e.target.value as "DRAFT" | "SCHEDULED" | "PUBLISHED",
-                          })
-                        }
-                        className="mt-1 w-full border border-white/20 bg-navy px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
-                      >
-                        <option value="DRAFT">DRAFT</option>
-                        <option value="PUBLISHED">PUBLISHED</option>
-                        <option value="SCHEDULED">SCHEDULED</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-mono uppercase text-white/70">
-                        Category
-                      </label>
-                      <select
-                        value={editingBlog.category}
-                        onChange={(e) =>
-                          setEditingBlog({ ...editingBlog, category: e.target.value })
-                        }
-                        className="mt-1 w-full border border-white/20 bg-navy px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
-                      >
-                        <option value="">None</option>
-                        {categories
-                          .filter((c) => c.type === "BLOG")
-                          .map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.name}
-                            </option>
-                          ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-mono uppercase text-white/70">
-                        Publish Date (Required if SCHEDULED)
-                      </label>
-                      <input
-                        type="datetime-local"
-                        value={editingBlog.publishedAt}
-                        onChange={(e) =>
-                          setEditingBlog({ ...editingBlog, publishedAt: e.target.value })
-                        }
-                        className="mt-1 w-full border border-white/20 bg-navy px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <input
-                      id="blog-featured"
-                      type="checkbox"
-                      checked={editingBlog.featured}
-                      onChange={(e) =>
-                        setEditingBlog({ ...editingBlog, featured: e.target.checked })
-                      }
-                      className="h-4 w-4 accent-white"
-                    />
-                    <label htmlFor="blog-featured" className="text-sm text-white">
-                      Feature this article on the homepage & blog header
-                    </label>
-                  </div>
-
-                  <div className="flex justify-end gap-3 border-t border-white/15 pt-4">
-                    <button
-                      type="button"
-                      onClick={() => setEditingBlog(null)}
-                      className="border border-white/25 px-4 py-2 text-xs uppercase tracking-wider text-white"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="bg-white px-6 py-2 text-xs font-semibold uppercase tracking-wider text-navy hover:bg-white/90"
-                    >
-                      Save Article
-                    </button>
-                  </div>
-                </form>
-              )}
+              <TableSkeleton rows={4} />
+              <TableSkeleton rows={6} />
             </div>
-          )}
-
-          {/* 3. PROJECT MANAGEMENT TAB */}
-          {activeTab === "projects" && (
-            <div className="space-y-6">
-              {!editingProject ? (
-                <>
-                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-                    <div className="relative flex-1">
-                      <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-white/50" />
-                      <input
-                        type="text"
-                        value={projectSearch}
-                        onChange={(e) => setProjectSearch(e.target.value)}
-                        placeholder="Search projects..."
-                        className="w-full border border-white/20 bg-navy py-2 pl-9 pr-3 text-sm text-white placeholder:text-white/40 focus:border-white focus:outline-none"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={openNewProject}
-                      className="inline-flex items-center gap-2 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wider text-navy transition hover:bg-white/90"
-                    >
-                      <Plus className="h-4 w-4" /> New Project
-                    </button>
-                  </div>
-
-                  <div className="divide-y divide-white/10 border border-white/15 bg-white/[0.02]">
-                    {projects.length === 0 ? (
-                      <p className="p-6 text-sm text-white/60">No projects found.</p>
-                    ) : (
-                      projects.map((proj) => {
-                        const projId =
-                          proj.id || (proj as unknown as { _id?: string })._id || "";
-                        return (
-                          <div
-                            key={projId}
-                            className="flex flex-col justify-between gap-4 p-4 sm:flex-row sm:items-center"
-                          >
-                            <div className="space-y-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="border border-white/30 px-2 py-0.5 font-mono text-[10px] uppercase text-white">
-                                  {proj.status}
-                                </span>
-                                {proj.featured && (
-                                  <span className="bg-white px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-navy">
-                                    Featured
-                                  </span>
-                                )}
-                                <span className="font-mono text-xs text-white/60">
-                                  /{proj.slug}
-                                </span>
-                              </div>
-                              <h3 className="text-base font-semibold text-white">{proj.title}</h3>
-                              <p className="line-clamp-1 text-xs text-white/70">{proj.summary}</p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => openEditProject(proj)}
-                                className="inline-flex items-center gap-1 border border-white/25 px-3 py-1.5 text-xs text-white hover:border-white"
-                              >
-                                <Edit3 className="h-3.5 w-3.5" /> Edit
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => void deleteProjectItem(projId)}
-                                className="inline-flex items-center gap-1 border border-white/25 px-3 py-1.5 text-xs text-white/80 hover:border-white hover:text-white"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" /> Delete
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </>
-              ) : (
-                <form
-                  onSubmit={(e) => void saveProject(e)}
-                  className="space-y-5 border border-white/15 bg-white/[0.02] p-6"
-                >
-                  <div className="flex items-center justify-between border-b border-white/15 pb-4">
-                    <h2 className="text-lg font-semibold text-white">
-                      {editingProject.id ? "Edit Project" : "Create Project"}
-                    </h2>
-                    <button
-                      type="button"
-                      onClick={() => setEditingProject(null)}
-                      className="border border-white/25 px-3 py-1 text-xs text-white hover:border-white"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          ) : (
+            <>
+              {/* ========================================================= */}
+              {/* 1. DASHBOARD OVERVIEW                                     */}
+              {/* ========================================================= */}
+              {activeSection === "dashboard" && overview && (
+                <div className="space-y-8">
+                  {/* Quick Actions Bar */}
+                  <div className="flex flex-wrap items-center justify-between gap-4 border border-white/15 bg-white/[0.02] p-4">
                     <div>
-                      <label className="block text-xs font-mono uppercase text-white/70">
-                        Project Title *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={editingProject.title}
-                        onChange={(e) =>
-                          setEditingProject({ ...editingProject, title: e.target.value })
-                        }
-                        className="mt-1 w-full border border-white/20 bg-navy px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-mono uppercase text-white/70">
-                        Slug (optional)
-                      </label>
-                      <input
-                        type="text"
-                        value={editingProject.slug}
-                        onChange={(e) =>
-                          setEditingProject({ ...editingProject, slug: e.target.value })
-                        }
-                        className="mt-1 w-full border border-white/20 bg-navy px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-mono uppercase text-white/70">
-                      Card Summary *
-                    </label>
-                    <textarea
-                      required
-                      rows={2}
-                      value={editingProject.summary}
-                      onChange={(e) =>
-                        setEditingProject({ ...editingProject, summary: e.target.value })
-                      }
-                      className="mt-1 w-full border border-white/20 bg-navy px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-1 block text-xs font-mono uppercase text-white/70">
-                      Detailed Project Case Study (Rich Text) *
-                    </label>
-                    <RichTextEditor
-                      value={editingProject.description}
-                      onChange={(html) =>
-                        setEditingProject({ ...editingProject, description: html })
-                      }
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    <div>
-                      <label className="block text-xs font-mono uppercase text-white/70">
-                        Technologies (comma-separated)
-                      </label>
-                      <input
-                        type="text"
-                        value={editingProject.technologiesText}
-                        onChange={(e) =>
-                          setEditingProject({
-                            ...editingProject,
-                            technologiesText: e.target.value,
-                          })
-                        }
-                        className="mt-1 w-full border border-white/20 bg-navy px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-mono uppercase text-white/70">
-                        GitHub Repository URL (https://github.com/...)
-                      </label>
-                      <input
-                        type="url"
-                        value={editingProject.githubUrl}
-                        onChange={(e) =>
-                          setEditingProject({ ...editingProject, githubUrl: e.target.value })
-                        }
-                        className="mt-1 w-full border border-white/20 bg-navy px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-mono uppercase text-white/70">
-                        Live Demo URL (https://...)
-                      </label>
-                      <input
-                        type="url"
-                        value={editingProject.liveUrl}
-                        onChange={(e) =>
-                          setEditingProject({ ...editingProject, liveUrl: e.target.value })
-                        }
-                        className="mt-1 w-full border border-white/20 bg-navy px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    <div>
-                      <label className="block text-xs font-mono uppercase text-white/70">
-                        Status
-                      </label>
-                      <select
-                        value={editingProject.status}
-                        onChange={(e) =>
-                          setEditingProject({
-                            ...editingProject,
-                            status: e.target.value as "DRAFT" | "PUBLISHED",
-                          })
-                        }
-                        className="mt-1 w-full border border-white/20 bg-navy px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
-                      >
-                        <option value="DRAFT">DRAFT</option>
-                        <option value="PUBLISHED">PUBLISHED</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-mono uppercase text-white/70">
-                        Category
-                      </label>
-                      <select
-                        value={editingProject.category}
-                        onChange={(e) =>
-                          setEditingProject({ ...editingProject, category: e.target.value })
-                        }
-                        className="mt-1 w-full border border-white/20 bg-navy px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
-                      >
-                        <option value="">None</option>
-                        {categories
-                          .filter((c) => c.type === "PROJECT")
-                          .map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.name}
-                            </option>
-                          ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-mono uppercase text-white/70">
-                        Display Order
-                      </label>
-                      <input
-                        type="number"
-                        value={editingProject.order}
-                        onChange={(e) =>
-                          setEditingProject({
-                            ...editingProject,
-                            order: Number(e.target.value) || 0,
-                          })
-                        }
-                        className="mt-1 w-full border border-white/20 bg-navy px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <input
-                      id="project-featured"
-                      type="checkbox"
-                      checked={editingProject.featured}
-                      onChange={(e) =>
-                        setEditingProject({ ...editingProject, featured: e.target.checked })
-                      }
-                      className="h-4 w-4 accent-white"
-                    />
-                    <label htmlFor="project-featured" className="text-sm text-white">
-                      Feature this project on the homepage
-                    </label>
-                  </div>
-
-                  <div className="flex justify-end gap-3 border-t border-white/15 pt-4">
-                    <button
-                      type="button"
-                      onClick={() => setEditingProject(null)}
-                      className="border border-white/25 px-4 py-2 text-xs uppercase tracking-wider text-white"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="bg-white px-6 py-2 text-xs font-semibold uppercase tracking-wider text-navy hover:bg-white/90"
-                    >
-                      Save Project
-                    </button>
-                  </div>
-                </form>
-              )}
-            </div>
-          )}
-
-          {/* 4. CATEGORIES & TAGS TAB */}
-          {activeTab === "taxonomy" && (
-            <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
-              <div className="space-y-4 border border-white/15 bg-white/[0.02] p-6">
-                <h2 className="text-base font-semibold uppercase tracking-wider text-white">
-                  Categories
-                </h2>
-                <form onSubmit={(e) => void createCategory(e)} className="space-y-3">
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      required
-                      value={newCategoryName}
-                      onChange={(e) => setNewCategoryName(e.target.value)}
-                      placeholder="Category name..."
-                      className="flex-1 border border-white/20 bg-navy px-3 py-2 text-sm text-white placeholder:text-white/40 focus:border-white focus:outline-none"
-                    />
-                    <select
-                      value={newCategoryType}
-                      onChange={(e) => setNewCategoryType(e.target.value as "BLOG" | "PROJECT")}
-                      className="border border-white/20 bg-navy px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
-                    >
-                      <option value="BLOG">BLOG</option>
-                      <option value="PROJECT">PROJECT</option>
-                    </select>
-                  </div>
-                  <button
-                    type="submit"
-                    className="w-full bg-white py-2 text-xs font-semibold uppercase tracking-wider text-navy hover:bg-white/90"
-                  >
-                    Add Category
-                  </button>
-                </form>
-
-                <div className="divide-y divide-white/10 pt-2">
-                  {categories.map((cat) => (
-                    <div key={cat.id} className="flex items-center justify-between py-2.5 text-sm">
-                      <div>
-                        <span className="mr-2 border border-white/25 px-1.5 py-0.5 font-mono text-[10px] text-white/80">
-                          {cat.type}
-                        </span>
-                        <span className="font-medium text-white">{cat.name}</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => void removeCategory(cat.id)}
-                        className="text-white/60 hover:text-white"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-4 border border-white/15 bg-white/[0.02] p-6">
-                <h2 className="text-base font-semibold uppercase tracking-wider text-white">
-                  Blog Tags
-                </h2>
-                <form onSubmit={(e) => void createTag(e)} className="flex gap-2">
-                  <input
-                    type="text"
-                    required
-                    value={newTagName}
-                    onChange={(e) => setNewTagName(e.target.value)}
-                    placeholder="Tag name..."
-                    className="flex-1 border border-white/20 bg-navy px-3 py-2 text-sm text-white placeholder:text-white/40 focus:border-white focus:outline-none"
-                  />
-                  <button
-                    type="submit"
-                    className="bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wider text-navy hover:bg-white/90"
-                  >
-                    Add Tag
-                  </button>
-                </form>
-
-                <div className="divide-y divide-white/10 pt-2">
-                  {tags.map((tag) => (
-                    <div key={tag.id} className="flex items-center justify-between py-2.5 text-sm">
-                      <span className="font-mono text-white">#{tag.slug}</span>
-                      <button
-                        type="button"
-                        onClick={() => void removeTag(tag.id)}
-                        className="text-white/60 hover:text-white"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 5. USER MANAGEMENT TAB */}
-          {activeTab === "users" && (
-            <div className="space-y-6">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-white/50" />
-                <input
-                  type="text"
-                  value={userSearch}
-                  onChange={(e) => setUserSearch(e.target.value)}
-                  placeholder="Search registered users by name or email..."
-                  className="w-full border border-white/20 bg-navy py-2 pl-9 pr-3 text-sm text-white placeholder:text-white/40 focus:border-white focus:outline-none"
-                />
-              </div>
-
-              <div className="divide-y divide-white/10 border border-white/15 bg-white/[0.02]">
-                {users.map((u) => (
-                  <div
-                    key={u.id}
-                    className="flex flex-col justify-between gap-4 p-4 sm:flex-row sm:items-center"
-                  >
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="bg-white px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-navy">
-                          {u.role}
-                        </span>
-                        <span className="border border-white/30 px-2 py-0.5 font-mono text-[10px] uppercase text-white">
-                          {u.status}
-                        </span>
-                        <span className="font-mono text-xs text-white/70">
-                          {u.emailVerified ? "Verified Email" : "Unverified Email"}
-                        </span>
-                      </div>
-                      <p className="text-sm font-semibold text-white">
-                        {u.name} <span className="font-mono text-xs text-white/70">({u.email})</span>
+                      <p className="font-mono text-[10px] uppercase tracking-widest text-white/60">
+                        Quick Operations
+                      </p>
+                      <p className="mt-0.5 text-xs text-white/80">
+                        Direct shortcuts to frequent publishing and administration workflows
                       </p>
                     </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
-                        onClick={() => void inspectUser(u.id)}
-                        className="border border-white/25 px-3 py-1.5 text-xs text-white hover:border-white"
+                        onClick={openNewBlogEditor}
+                        className="inline-flex items-center gap-1.5 bg-white px-4 py-2 text-xs font-bold tracking-wider text-navy uppercase transition hover:bg-white/90"
                       >
-                        Inspect
+                        <Plus className="h-3.5 w-3.5" />
+                        Create New Blog Post
                       </button>
-                      {!u.emailVerified && (
+                      <button
+                        type="button"
+                        onClick={openNewProjectEditor}
+                        className="inline-flex items-center gap-1.5 border border-white/25 px-4 py-2 text-xs font-semibold tracking-wider text-white uppercase transition hover:border-white"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        Add New Project
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveSection("media")}
+                        className="inline-flex items-center gap-1.5 border border-white/25 px-4 py-2 text-xs font-semibold tracking-wider text-white uppercase transition hover:border-white"
+                      >
+                        <Upload className="h-3.5 w-3.5" />
+                        Upload Media
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveSection("messages")}
+                        className="inline-flex items-center gap-1.5 border border-white/25 px-4 py-2 text-xs font-semibold tracking-wider text-white uppercase transition hover:border-white"
+                      >
+                        <MessageSquare className="h-3.5 w-3.5" />
+                        View Contact Messages ({overview.stats.messages.unread} unread)
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 8 Core Statistics Cards */}
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    {[
+                      {
+                        label: "Total Blog Posts",
+                        value: overview.stats.blogs.total,
+                        comparison: overview.comparisons
+                          ? `${overview.comparisons.blogsCreated.last30Days} created in last 30d (prev 30d: ${overview.comparisons.blogsCreated.prev30Days})`
+                          : "Live MongoDB count",
+                        icon: FileText,
+                        target: "blogs" as AdminNavSection,
+                      },
+                      {
+                        label: "Published Posts",
+                        value: overview.stats.blogs.published,
+                        comparison: overview.comparisons
+                          ? `${overview.comparisons.blogsPublished.last30Days} published in last 30d`
+                          : "Publicly indexed articles",
+                        icon: BookOpen,
+                        target: "blogs" as AdminNavSection,
+                      },
+                      {
+                        label: "Draft Posts",
+                        value: overview.stats.blogs.drafts,
+                        comparison: "Work-in-progress articles",
+                        icon: Edit3,
+                        target: "blogs" as AdminNavSection,
+                      },
+                      {
+                        label: "Scheduled Posts",
+                        value: overview.stats.blogs.scheduled,
+                        comparison: "Queued for future publication",
+                        icon: Calendar,
+                        target: "blogs" as AdminNavSection,
+                      },
+                      {
+                        label: "Total Projects",
+                        value: overview.stats.projects.total,
+                        comparison: overview.comparisons
+                          ? `${overview.comparisons.projectsCreated.last30Days} added in last 30d (prev 30d: ${overview.comparisons.projectsCreated.prev30Days})`
+                          : "Engineering case studies",
+                        icon: FolderKanban,
+                        target: "projects" as AdminNavSection,
+                      },
+                      {
+                        label: "Published Projects",
+                        value: overview.stats.projects.published,
+                        comparison: `${overview.stats.projects.drafts} draft project(s)`,
+                        icon: Sparkles,
+                        target: "projects" as AdminNavSection,
+                      },
+                      {
+                        label: "Registered Users",
+                        value: overview.stats.users.total,
+                        comparison: overview.comparisons
+                          ? `${overview.comparisons.usersRegistered.last30Days} joined in last 30d (${overview.stats.users.active} active)`
+                          : `${overview.stats.users.active} active accounts`,
+                        icon: Users,
+                        target: "users" as AdminNavSection,
+                      },
+                      {
+                        label: "Unread Contact Messages",
+                        value: overview.stats.messages.unread,
+                        comparison: overview.comparisons
+                          ? `${overview.comparisons.messagesReceived.last30Days} inquiries in last 30d (${overview.stats.messages.total} total)`
+                          : `${overview.stats.messages.total} total messages`,
+                        icon: Mail,
+                        target: "messages" as AdminNavSection,
+                      },
+                    ].map((stat) => {
+                      const Icon = stat.icon;
+                      return (
+                        <button
+                          key={stat.label}
+                          type="button"
+                          onClick={() => setActiveSection(stat.target)}
+                          className="group flex flex-col justify-between border border-white/15 bg-white/[0.02] p-5 text-left transition hover:border-white"
+                        >
+                          <div className="flex w-full items-center justify-between">
+                            <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-white/65">
+                              {stat.label}
+                            </span>
+                            <div className="flex h-8 w-8 items-center justify-center border border-white/15 bg-white/5 transition group-hover:bg-white group-hover:text-navy">
+                              <Icon className="h-4 w-4" />
+                            </div>
+                          </div>
+                          <div className="mt-4">
+                            <p className="font-mono text-3xl font-bold text-white">{stat.value}</p>
+                            <p className="mt-1.5 text-[11px] text-white/60">{stat.comparison}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Overview Analytics Charts */}
+                  {overview.monthlySeries && overview.monthlySeries.length > 0 && (
+                    <div className="grid gap-6 lg:grid-cols-2">
+                      <BarChartCard
+                        title="Monthly Content Creation"
+                        subtitle="Real 6-month history of blog posts & projects authored"
+                        primaryLabel="Blog Posts"
+                        secondaryLabel="Projects"
+                        data={overview.monthlySeries.map((pt) => ({
+                          label: pt.label,
+                          primary: pt.blogsTotal,
+                          secondary: pt.projectsTotal,
+                        }))}
+                      />
+                      <BarChartCard
+                        title="User Registrations & Contact Inquiries"
+                        subtitle="Real 6-month trend of new user accounts and inbound messages"
+                        primaryLabel="Users Registered"
+                        secondaryLabel="Messages Received"
+                        data={overview.monthlySeries.map((pt) => ({
+                          label: pt.label,
+                          primary: pt.usersRegistered,
+                          secondary: pt.messagesReceived,
+                        }))}
+                      />
+                    </div>
+                  )}
+
+                  {/* Recent Activity Panels */}
+                  <div className="grid gap-6 lg:grid-cols-2">
+                    {/* Recent Blog Posts */}
+                    <div className="border border-white/15 bg-white/[0.02] p-5">
+                      <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                        <h3 className="text-sm font-bold uppercase tracking-wider text-white">
+                          Recently Updated Blog Posts
+                        </h3>
                         <button
                           type="button"
-                          onClick={() =>
-                            void changeUserStatus(u.id, { emailVerified: true, status: "ACTIVE" })
-                          }
-                          className="border border-white/25 px-3 py-1.5 text-xs text-white hover:border-white"
+                          onClick={() => setActiveSection("blogs")}
+                          className="font-mono text-[10px] text-white/75 uppercase hover:text-white"
                         >
-                          Verify
+                          Manage All →
                         </button>
-                      )}
-                      {u.role !== "ADMIN" &&
-                        (u.status === "SUSPENDED" ? (
-                          <button
-                            type="button"
-                            onClick={() => void changeUserStatus(u.id, { status: "ACTIVE" })}
-                            className="bg-white px-3 py-1.5 text-xs font-semibold text-navy"
+                      </div>
+                      <div className="mt-3 divide-y divide-white/10">
+                        {(overview.recentBlogs || blogs.slice(0, 5)).map((b) => (
+                          <div
+                            key={b.id}
+                            className="flex items-center justify-between gap-3 py-2.5 text-xs"
                           >
-                            Reactivate
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void changeUserStatus(u.id, {
-                                status: "SUSPENDED",
-                                revokeSessions: true,
-                              })
-                            }
-                            className="border border-white/40 px-3 py-1.5 text-xs text-white hover:bg-white hover:text-navy"
-                          >
-                            Suspend
-                          </button>
-                        ))}
-                      <button
-                        type="button"
-                        onClick={() => void revokeAllUserSessions(u.id)}
-                        className="border border-white/25 px-3 py-1.5 text-xs text-white/80 hover:border-white hover:text-white"
-                      >
-                        Revoke Sessions
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {selectedUserDetail && (
-                <div className="border border-white/30 bg-white/[0.03] p-6">
-                  <div className="flex items-center justify-between border-b border-white/15 pb-3">
-                    <h3 className="text-base font-semibold text-white">
-                      User Security Inspector: {selectedUserDetail.user.email}
-                    </h3>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedUserDetail(null)}
-                      className="text-white/70 hover:text-white"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                  <div className="mt-4 space-y-4 text-xs">
-                    <p className="font-mono text-white/80">
-                      Active Sessions ({selectedUserDetail.sessions.length}) — Passwords & OTP
-                      hashes are never exposed to administrators.
-                    </p>
-                    <div className="divide-y divide-white/10 border border-white/15">
-                      {selectedUserDetail.sessions.length === 0 ? (
-                        <p className="p-3 text-white/60">No active sessions.</p>
-                      ) : (
-                        selectedUserDetail.sessions.map((s) => (
-                          <div key={s.id} className="flex justify-between p-3 font-mono">
-                            <span>
-                              IP: {s.ip ?? "unknown"} · {s.userAgent ?? "Browser"}
-                            </span>
-                            <span>
-                              Expires: {new Date(s.expiresAt).toLocaleDateString()}
+                            <div className="min-w-0">
+                              <p className="truncate font-semibold text-white">{b.title}</p>
+                              <p className="font-mono text-[10px] text-white/55">
+                                /{b.slug} · Updated {new Date(b.updatedAt).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <span
+                              className={`shrink-0 px-2 py-0.5 font-mono text-[10px] ${
+                                b.status === "PUBLISHED"
+                                  ? "bg-white font-bold text-navy"
+                                  : "border border-white/25 text-white/75"
+                              }`}
+                            >
+                              {b.status}
                             </span>
                           </div>
-                        ))
-                      )}
+                        ))}
+                        {blogs.length === 0 && (
+                          <p className="py-4 text-xs text-white/50">No blog posts created yet.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Recent Projects */}
+                    <div className="border border-white/15 bg-white/[0.02] p-5">
+                      <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                        <h3 className="text-sm font-bold uppercase tracking-wider text-white">
+                          Recently Updated Projects
+                        </h3>
+                        <button
+                          type="button"
+                          onClick={() => setActiveSection("projects")}
+                          className="font-mono text-[10px] text-white/75 uppercase hover:text-white"
+                        >
+                          Manage All →
+                        </button>
+                      </div>
+                      <div className="mt-3 divide-y divide-white/10">
+                        {(overview.recentProjects || projects.slice(0, 5)).map((p) => (
+                          <div
+                            key={p.id}
+                            className="flex items-center justify-between gap-3 py-2.5 text-xs"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate font-semibold text-white">{p.title}</p>
+                              <p className="font-mono text-[10px] text-white/55">
+                                /{p.slug} · Updated {new Date(p.updatedAt).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <span
+                              className={`shrink-0 px-2 py-0.5 font-mono text-[10px] ${
+                                p.status === "PUBLISHED"
+                                  ? "bg-white font-bold text-navy"
+                                  : "border border-white/25 text-white/75"
+                              }`}
+                            >
+                              {p.status}
+                            </span>
+                          </div>
+                        ))}
+                        {projects.length === 0 && (
+                          <p className="py-4 text-xs text-white/50">No projects created yet.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Recent Contact Messages & Registered Users */}
+                    <div className="border border-white/15 bg-white/[0.02] p-5">
+                      <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                        <h3 className="text-sm font-bold uppercase tracking-wider text-white">
+                          Recent Contact Messages & Users
+                        </h3>
+                        <div className="flex gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setActiveSection("messages")}
+                            className="font-mono text-[10px] text-white/75 uppercase hover:text-white"
+                          >
+                            Inbox →
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setActiveSection("users")}
+                            className="font-mono text-[10px] text-white/75 uppercase hover:text-white"
+                          >
+                            Users →
+                          </button>
+                        </div>
+                      </div>
+                      <div className="mt-3 divide-y divide-white/10">
+                        {(overview.recentMessages || messages.slice(0, 3)).map((m) => (
+                          <div
+                            key={m.id}
+                            className="flex items-center justify-between gap-3 py-2.5 text-xs"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate font-semibold text-white">{m.subject}</p>
+                              <p className="font-mono text-[10px] text-white/60">
+                                From {m.name} ({m.email})
+                              </p>
+                            </div>
+                            <span
+                              className={`shrink-0 px-2 py-0.5 font-mono text-[10px] ${
+                                m.status === "NEW"
+                                  ? "bg-white font-bold text-navy"
+                                  : "border border-white/25 text-white/75"
+                              }`}
+                            >
+                              {m.status}
+                            </span>
+                          </div>
+                        ))}
+                        {(overview.recentUsers || users.slice(0, 3)).map((u) => (
+                          <div
+                            key={u.id}
+                            className="flex items-center justify-between gap-3 py-2.5 text-xs"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate font-medium text-white">{u.name}</p>
+                              <p className="font-mono text-[10px] text-white/55">
+                                {u.email} · Joined {new Date(u.createdAt).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <span className="border border-white/20 px-2 py-0.5 font-mono text-[10px] text-white">
+                              {u.role}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Recent Administrator Audit Actions */}
+                    <div className="border border-white/15 bg-white/[0.02] p-5">
+                      <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                        <h3 className="text-sm font-bold uppercase tracking-wider text-white">
+                          Recent Administrator Actions
+                        </h3>
+                        <button
+                          type="button"
+                          onClick={() => setActiveSection("audit")}
+                          className="font-mono text-[10px] text-white/75 uppercase hover:text-white"
+                        >
+                          Full Audit Log →
+                        </button>
+                      </div>
+                      <div className="mt-3 divide-y divide-white/10 font-mono text-[11px]">
+                        {overview.recentActivity.slice(0, 6).map((act) => (
+                          <div
+                            key={act.id}
+                            className="flex items-center justify-between gap-3 py-2.5"
+                          >
+                            <div className="min-w-0">
+                              <span className="font-bold text-white">{act.action}</span>
+                              <p className="truncate text-[10px] text-white/55">
+                                {act.actorEmail || "system"} · {act.category}
+                              </p>
+                            </div>
+                            <span className="shrink-0 text-[10px] text-white/60">
+                              {new Date(act.createdAt).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
-            </div>
-          )}
 
-          {/* 6. MEDIA MANAGEMENT TAB */}
-          {activeTab === "media" && (
-            <div className="space-y-6">
-              <div className="border border-white/15 bg-white/[0.02] p-6">
-                <h2 className="text-base font-semibold uppercase tracking-wider text-white">
-                  Upload Verified Image (PNG, JPEG, WebP, GIF, AVIF · Max 5MB)
-                </h2>
-                <p className="mt-1 text-xs text-white/60">
-                  Files are verified by magic-byte binary signatures on the server. SVG, scripts,
-                  and polyglot payloads are strictly rejected.
-                </p>
-                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <select
-                    value={mediaFolder}
-                    onChange={(e) => setMediaFolder(e.target.value)}
-                    className="border border-white/20 bg-navy px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
-                  >
-                    <option value="dezaakir/general">dezaakir/general</option>
-                    <option value="dezaakir/blogs">dezaakir/blogs</option>
-                    <option value="dezaakir/projects">dezaakir/projects</option>
-                    <option value="dezaakir/profile">dezaakir/profile</option>
-                  </select>
-                  <input
-                    type="text"
-                    value={mediaAlt}
-                    onChange={(e) => setMediaAlt(e.target.value)}
-                    placeholder="Accessible alt text..."
-                    className="border border-white/20 bg-navy px-3 py-2 text-sm text-white placeholder:text-white/40 focus:border-white focus:outline-none"
-                  />
-                  <label className="inline-flex cursor-pointer items-center justify-center gap-2 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wider text-navy hover:bg-white/90">
-                    <Upload className="h-4 w-4" />
-                    <span>{uploadingMedia ? "Verifying & Uploading..." : "Select Image File"}</span>
-                    <input
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp,image/gif,image/avif"
-                      onChange={(e) => void handleFileUpload(e)}
-                      disabled={uploadingMedia}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
-              </div>
+              {/* ========================================================= */}
+              {/* 2. BLOG MANAGEMENT (LISTING + RICH EDITOR / PREVIEW)      */}
+              {/* ========================================================= */}
+              {activeSection === "blogs" && (
+                <div className="space-y-6">
+                  {blogEditorOpen ? (
+                    <div className="border border-white/20 bg-white/[0.02] p-6">
+                      {/* Editor Top Header */}
+                      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/15 pb-4">
+                        <div>
+                          <p className="font-mono text-[10px] uppercase tracking-widest text-white/60">
+                            {editingBlogId ? "Editing Article" : "New Technical Article"}
+                          </p>
+                          <h2 className="mt-0.5 text-lg font-bold text-white">
+                            {blogTitle || "Untitled Blog Article"}
+                          </h2>
+                        </div>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {mediaList.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex flex-col justify-between border border-white/15 bg-white/[0.02] p-4"
-                  >
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between font-mono text-[11px] uppercase text-white/70">
-                        <span>{item.format}</span>
-                        <span>{(item.bytes / 1024).toFixed(1)} KB</span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {/* Write / Live Preview Mode Switch */}
+                          <div className="flex border border-white/25">
+                            <button
+                              type="button"
+                              onClick={() => setBlogEditorMode("write")}
+                              className={`px-3.5 py-1.5 text-xs font-semibold uppercase ${
+                                blogEditorMode === "write"
+                                  ? "bg-white text-navy"
+                                  : "text-white/75 hover:text-white"
+                              }`}
+                            >
+                              Editor
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setBlogEditorMode("preview")}
+                              className={`px-3.5 py-1.5 text-xs font-semibold uppercase ${
+                                blogEditorMode === "preview"
+                                  ? "bg-white text-navy"
+                                  : "text-white/75 hover:text-white"
+                              }`}
+                            >
+                              Preview
+                            </button>
+                          </div>
+
+                          <button
+                            type="button"
+                            disabled={saving}
+                            onClick={() => void saveBlogArticle("DRAFT")}
+                            className="border border-white/25 px-3.5 py-1.5 text-xs font-semibold text-white uppercase hover:border-white disabled:opacity-50"
+                          >
+                            Save Draft
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={saving}
+                            onClick={() => void saveBlogArticle("PUBLISHED")}
+                            className="bg-white px-4 py-1.5 text-xs font-bold text-navy uppercase transition hover:bg-white/90 disabled:opacity-50"
+                          >
+                            {saving
+                              ? "Saving..."
+                              : editingBlogId
+                                ? "Update & Publish"
+                                : "Publish Now"}
+                          </button>
+
+                          {editingBlogId && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const found = blogs.find((b) => b.id === editingBlogId);
+                                if (found) confirmDeleteBlog(found);
+                              }}
+                              className="border border-white/25 px-3 py-1.5 text-xs font-semibold text-white/80 uppercase hover:border-white hover:text-white"
+                            >
+                              Delete
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => setBlogEditorOpen(false)}
+                            className="border border-white/20 px-3 py-1.5 text-xs text-white/70 uppercase hover:border-white hover:text-white"
+                          >
+                            Close
+                          </button>
+                        </div>
                       </div>
-                      <p className="truncate font-mono text-xs text-white" title={item.publicId}>
-                        {item.publicId}
-                      </p>
-                      <p className="truncate text-xs text-white/60">{item.alt || "No alt text"}</p>
+
+                      {blogEditorMode === "preview" ? (
+                        /* Live Article Preview Mode (Preserves all state) */
+                        <div className="mx-auto max-w-3xl space-y-6 py-8">
+                          <div className="border-b border-white/15 pb-6">
+                            <div className="flex flex-wrap items-center gap-3 font-mono text-xs text-white/60">
+                              <span className="border border-white/25 px-2 py-0.5 text-[10px] text-white uppercase">
+                                {blogStatus}
+                              </span>
+                              <span>{estimatedReadingTime} min read</span>
+                              <span>/{blogSlug || slugifyText(blogTitle)}</span>
+                            </div>
+                            <h1 className="mt-4 text-3xl font-bold tracking-tight text-white">
+                              {blogTitle || "Untitled Article"}
+                            </h1>
+                            {blogExcerpt && (
+                              <p className="mt-3 text-base leading-relaxed text-white/75">
+                                {blogExcerpt}
+                              </p>
+                            )}
+                          </div>
+
+                          {blogCoverImage?.url && (
+                            <div className="overflow-hidden border border-white/20">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={blogCoverImage.url}
+                                alt={blogCoverImage.alt || blogTitle}
+                                className="max-h-96 w-full object-cover"
+                              />
+                            </div>
+                          )}
+
+                          <div
+                            className="prose prose-invert max-w-none space-y-4 text-sm leading-relaxed text-white/90"
+                            dangerouslySetInnerHTML={{ __html: blogContent }}
+                          />
+                        </div>
+                      ) : (
+                        /* Rich Writing Interface */
+                        <div className="mt-6 grid gap-6 lg:grid-cols-12">
+                          <div className="space-y-5 lg:col-span-8">
+                            <div className="grid gap-4 sm:grid-cols-2">
+                              <div>
+                                <label className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-white/70">
+                                  Blog Title
+                                </label>
+                                <input
+                                  type="text"
+                                  required
+                                  value={blogTitle}
+                                  onChange={(e) => {
+                                    setBlogTitle(e.target.value);
+                                    if (!editingBlogId) setBlogSlug(slugifyText(e.target.value));
+                                  }}
+                                  placeholder="e.g. Architecting Zero-Trust APIs with Bun & TypeScript"
+                                  className="w-full border border-white/25 bg-navy px-3.5 py-2.5 text-sm text-white focus:border-white focus:outline-none"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-white/70">
+                                  URL Slug
+                                </label>
+                                <input
+                                  type="text"
+                                  required
+                                  value={blogSlug}
+                                  onChange={(e) => setBlogSlug(slugifyText(e.target.value))}
+                                  placeholder="architecting-zero-trust-apis"
+                                  className="w-full border border-white/25 bg-navy px-3.5 py-2.5 font-mono text-sm text-white focus:border-white focus:outline-none"
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-white/70">
+                                Short Description / Excerpt
+                              </label>
+                              <textarea
+                                rows={2}
+                                value={blogExcerpt}
+                                onChange={(e) => setBlogExcerpt(e.target.value)}
+                                placeholder="Concise summary displayed on blog cards and feeds (auto-filled from content if left blank)..."
+                                className="w-full border border-white/25 bg-navy px-3.5 py-2 text-sm text-white focus:border-white focus:outline-none"
+                              />
+                            </div>
+
+                            <div>
+                              <div className="mb-1.5 flex items-center justify-between">
+                                <label className="font-mono text-[10px] uppercase tracking-wider text-white/70">
+                                  Article Body (Rich Text, Code Blocks, Headings, Lists, Links, Images)
+                                </label>
+                                <span className="font-mono text-[10px] text-white/60">
+                                  Est. Reading Time: {estimatedReadingTime} min
+                                </span>
+                              </div>
+                              <RichTextEditor content={blogContent} onChange={setBlogContent} />
+                            </div>
+                          </div>
+
+                          {/* Right Sidebar: Cover Image, Taxonomy, Publishing, SEO */}
+                          <div className="space-y-5 lg:col-span-4">
+                            {/* Featured Image */}
+                            <div className="border border-white/15 bg-navy p-4">
+                              <label className="mb-2 block font-mono text-[10px] uppercase tracking-wider text-white/70">
+                                Featured Cover Image
+                              </label>
+                              {blogCoverImage?.url ? (
+                                <div className="space-y-2.5">
+                                  <div className="aspect-video w-full overflow-hidden border border-white/15">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img
+                                      src={blogCoverImage.url}
+                                      alt={blogCoverImage.alt || blogTitle}
+                                      className="h-full w-full object-cover"
+                                    />
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => setMediaPickerTarget("blogCover")}
+                                      className="flex-1 border border-white/25 py-1.5 text-xs font-semibold text-white uppercase hover:border-white"
+                                    >
+                                      Change
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setBlogCoverImage(undefined)}
+                                      className="border border-white/20 px-3 py-1.5 text-xs text-white/70 hover:border-white hover:text-white"
+                                    >
+                                      Remove
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setMediaPickerTarget("blogCover")}
+                                  className="flex aspect-video w-full flex-col items-center justify-center border border-dashed border-white/25 p-4 text-center transition hover:border-white"
+                                >
+                                  <ImageIcon className="h-5 w-5 text-white/70" />
+                                  <span className="mt-1.5 text-xs font-semibold text-white">
+                                    Upload or Choose Cover Image
+                                  </span>
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Status & Scheduling */}
+                            <div className="space-y-3 border border-white/15 bg-navy p-4">
+                              <label className="block font-mono text-[10px] uppercase tracking-wider text-white/70">
+                                Publication Status & Scheduling
+                              </label>
+                              <select
+                                value={blogStatus}
+                                onChange={(e) =>
+                                  setBlogStatus(
+                                    e.target.value as "DRAFT" | "PUBLISHED" | "SCHEDULED"
+                                  )
+                                }
+                                className="w-full border border-white/25 bg-navy px-3 py-2 text-xs text-white focus:border-white focus:outline-none"
+                              >
+                                <option value="DRAFT">DRAFT</option>
+                                <option value="PUBLISHED">PUBLISHED</option>
+                                <option value="SCHEDULED">SCHEDULED</option>
+                              </select>
+
+                              {blogStatus === "SCHEDULED" && (
+                                <div>
+                                  <label className="mb-1 block font-mono text-[10px] uppercase text-white/60">
+                                    Scheduled Publish Date & Time
+                                  </label>
+                                  <input
+                                    type="datetime-local"
+                                    value={blogScheduledAt}
+                                    onChange={(e) => setBlogScheduledAt(e.target.value)}
+                                    className="w-full border border-white/25 bg-navy px-3 py-2 font-mono text-xs text-white focus:border-white focus:outline-none"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => void saveBlogArticle("SCHEDULED")}
+                                    className="mt-2 w-full bg-white py-2 text-xs font-bold text-navy uppercase"
+                                  >
+                                    Schedule Publication
+                                  </button>
+                                </div>
+                              )}
+
+                              <label className="flex items-center gap-2 pt-1 text-xs text-white/85">
+                                <input
+                                  type="checkbox"
+                                  checked={blogFeatured}
+                                  onChange={(e) => setBlogFeatured(e.target.checked)}
+                                  className="h-4 w-4 accent-white"
+                                />
+                                Pin as Featured Article
+                              </label>
+                            </div>
+
+                            {/* Category & Multi-Tags */}
+                            <div className="space-y-3 border border-white/15 bg-navy p-4">
+                              <div>
+                                <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-white/70">
+                                  Category
+                                </label>
+                                <select
+                                  value={blogCategoryId}
+                                  onChange={(e) => setBlogCategoryId(e.target.value)}
+                                  className="w-full border border-white/25 bg-navy px-3 py-2 text-xs text-white focus:border-white focus:outline-none"
+                                >
+                                  <option value="">Uncategorized</option>
+                                  {categories
+                                    .filter((c) => c.type === "BLOG")
+                                    .map((c) => (
+                                      <option key={c.id} value={c.id}>
+                                        {c.name}
+                                      </option>
+                                    ))}
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-white/70">
+                                  Tags ({blogSelectedTagIds.length} selected)
+                                </label>
+                                <div className="flex max-h-36 flex-wrap gap-1.5 overflow-y-auto">
+                                  {tags.map((t) => {
+                                    const active = blogSelectedTagIds.includes(t.id);
+                                    return (
+                                      <button
+                                        key={t.id}
+                                        type="button"
+                                        onClick={() =>
+                                          setBlogSelectedTagIds((prev) =>
+                                            active
+                                              ? prev.filter((id) => id !== t.id)
+                                              : [...prev, t.id]
+                                          )
+                                        }
+                                        className={`px-2.5 py-1 font-mono text-[10px] transition ${
+                                          active
+                                            ? "bg-white font-bold text-navy"
+                                            : "border border-white/20 text-white/70 hover:border-white"
+                                        }`}
+                                      >
+                                        #{t.name}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* SEO Metadata */}
+                            <div className="space-y-3 border border-white/15 bg-navy p-4">
+                              <p className="font-mono text-[10px] uppercase tracking-wider text-white/70">
+                                Search Engine Optimization (SEO)
+                              </p>
+                              <div>
+                                <label className="mb-1 block font-mono text-[10px] text-white/55">
+                                  SEO Title ({blogSeoTitle.length}/70)
+                                </label>
+                                <input
+                                  type="text"
+                                  value={blogSeoTitle}
+                                  onChange={(e) => setBlogSeoTitle(e.target.value)}
+                                  placeholder={blogTitle || "Custom SEO title..."}
+                                  className="w-full border border-white/20 bg-navy px-3 py-2 text-xs text-white focus:border-white focus:outline-none"
+                                />
+                              </div>
+                              <div>
+                                <label className="mb-1 block font-mono text-[10px] text-white/55">
+                                  SEO Meta Description ({blogSeoDescription.length}/160)
+                                </label>
+                                <textarea
+                                  rows={3}
+                                  value={blogSeoDescription}
+                                  onChange={(e) => setBlogSeoDescription(e.target.value)}
+                                  placeholder={blogExcerpt || "Custom meta description..."}
+                                  className="w-full border border-white/20 bg-navy px-3 py-2 text-xs text-white focus:border-white focus:outline-none"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <div className="mt-4 flex items-center justify-between gap-2 border-t border-white/10 pt-3">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void navigator.clipboard.writeText(item.url);
-                          notify("Copied image URL to clipboard.");
+                  ) : (
+                    /* Blog Listing View */
+                    <>
+                      <div className="flex flex-wrap items-center justify-between gap-3 border border-white/15 bg-white/[0.02] p-4">
+                        <div className="flex flex-1 flex-wrap items-center gap-2.5">
+                          <div className="relative min-w-[220px] flex-1">
+                            <Search className="pointer-events-none absolute top-2.5 left-3 h-3.5 w-3.5 text-white/50" />
+                            <input
+                              type="text"
+                              value={blogSearch}
+                              onChange={(e) => setBlogSearch(e.target.value)}
+                              onKeyDown={(e) => e.key === "Enter" && void fetchBlogs(1)}
+                              placeholder="Search articles by title, excerpt, or content..."
+                              className="w-full border border-white/20 bg-navy py-2 pr-3 pl-8 text-xs text-white focus:border-white focus:outline-none"
+                            />
+                          </div>
+
+                          <select
+                            value={blogStatusFilter}
+                            onChange={(e) => setBlogStatusFilter(e.target.value)}
+                            className="border border-white/20 bg-navy px-3 py-2 text-xs text-white focus:border-white focus:outline-none"
+                          >
+                            <option value="">All Statuses</option>
+                            <option value="PUBLISHED">PUBLISHED</option>
+                            <option value="DRAFT">DRAFT</option>
+                            <option value="SCHEDULED">SCHEDULED</option>
+                          </select>
+
+                          <select
+                            value={blogCategoryFilter}
+                            onChange={(e) => setBlogCategoryFilter(e.target.value)}
+                            className="border border-white/20 bg-navy px-3 py-2 text-xs text-white focus:border-white focus:outline-none"
+                          >
+                            <option value="">All Categories</option>
+                            {categories
+                              .filter((c) => c.type === "BLOG")
+                              .map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.name}
+                                </option>
+                              ))}
+                          </select>
+
+                          <select
+                            value={blogSort}
+                            onChange={(e) =>
+                              setBlogSort(e.target.value as "newest" | "oldest" | "title")
+                            }
+                            className="border border-white/20 bg-navy px-3 py-2 text-xs text-white focus:border-white focus:outline-none"
+                          >
+                            <option value="newest">Sort: Newest</option>
+                            <option value="oldest">Sort: Oldest</option>
+                            <option value="title">Sort: Title (A–Z)</option>
+                          </select>
+
+                          <button
+                            type="button"
+                            onClick={() => void fetchBlogs(1)}
+                            className="border border-white/25 px-3.5 py-2 text-xs font-semibold text-white uppercase hover:border-white"
+                          >
+                            Search
+                          </button>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={openNewBlogEditor}
+                          className="inline-flex items-center gap-1.5 bg-white px-4 py-2 text-xs font-bold tracking-wider text-navy uppercase transition hover:bg-white/90"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          Create Blog Post
+                        </button>
+                      </div>
+
+                      {/* Bulk Actions Bar */}
+                      {selectedBlogIds.length > 0 && (
+                        <div className="flex flex-wrap items-center justify-between gap-3 border border-white bg-white/10 px-4 py-2.5">
+                          <span className="font-mono text-xs font-bold text-white">
+                            {selectedBlogIds.length} article(s) selected
+                          </span>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleBulkBlogAction("PUBLISH")}
+                              className="bg-white px-3 py-1 font-mono text-[10px] font-bold text-navy uppercase"
+                            >
+                              Publish Selected
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleBulkBlogAction("DRAFT")}
+                              className="border border-white/40 px-3 py-1 font-mono text-[10px] text-white uppercase hover:border-white"
+                            >
+                              Move to Draft
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleBulkBlogAction("DELETE")}
+                              className="border border-white/40 px-3 py-1 font-mono text-[10px] text-white uppercase hover:border-white"
+                            >
+                              Delete Selected
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedBlogIds([])}
+                              className="px-2 py-1 font-mono text-[10px] text-white/70 uppercase hover:text-white"
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {blogsLoading ? (
+                        <TableSkeleton rows={6} />
+                      ) : blogs.length === 0 ? (
+                        <EmptyState
+                          title="No blog articles found"
+                          description="Start publishing technical articles, engineering deep-dives, and tutorials."
+                          actionLabel="Create First Blog Post"
+                          onAction={openNewBlogEditor}
+                        />
+                      ) : (
+                        <div className="overflow-x-auto border border-white/15 bg-white/[0.01]">
+                          <table className="w-full text-left text-xs">
+                            <thead className="border-b border-white/15 bg-white/[0.03] font-mono text-[10px] uppercase text-white/60">
+                              <tr>
+                                <th className="w-10 px-4 py-3">
+                                  <input
+                                    type="checkbox"
+                                    checked={
+                                      blogs.length > 0 && selectedBlogIds.length === blogs.length
+                                    }
+                                    onChange={(e) =>
+                                      setSelectedBlogIds(
+                                        e.target.checked ? blogs.map((b) => b.id) : []
+                                      )
+                                    }
+                                    className="h-3.5 w-3.5 accent-white"
+                                    aria-label="Select all articles"
+                                  />
+                                </th>
+                                <th className="px-4 py-3">Article</th>
+                                <th className="px-4 py-3">Author</th>
+                                <th className="px-4 py-3">Category</th>
+                                <th className="px-4 py-3">Status</th>
+                                <th className="px-4 py-3">Reading Time</th>
+                                <th className="px-4 py-3">Created / Updated</th>
+                                <th className="px-4 py-3 text-right">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-white/10">
+                              {blogs.map((blog) => {
+                                const selected = selectedBlogIds.includes(blog.id);
+                                const authorName =
+                                  typeof blog.author === "object" && blog.author?.name
+                                    ? blog.author.name
+                                    : currentAdmin?.name || "Zaakir";
+                                return (
+                                  <tr key={blog.id} className="hover:bg-white/[0.02]">
+                                    <td className="px-4 py-3">
+                                      <input
+                                        type="checkbox"
+                                        checked={selected}
+                                        onChange={(e) =>
+                                          setSelectedBlogIds((prev) =>
+                                            e.target.checked
+                                              ? [...prev, blog.id]
+                                              : prev.filter((id) => id !== blog.id)
+                                          )
+                                        }
+                                        className="h-3.5 w-3.5 accent-white"
+                                        aria-label={`Select ${blog.title}`}
+                                      />
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <div className="flex items-center gap-3">
+                                        <div className="h-10 w-14 shrink-0 overflow-hidden border border-white/15 bg-white/5">
+                                          {blog.coverImage?.url ? (
+                                            /* eslint-disable-next-line @next/next/no-img-element */
+                                            <img
+                                              src={blog.coverImage.url}
+                                              alt={blog.title}
+                                              className="h-full w-full object-cover"
+                                            />
+                                          ) : (
+                                            <div className="flex h-full w-full items-center justify-center font-mono text-[9px] text-white/40">
+                                              NO IMG
+                                            </div>
+                                          )}
+                                        </div>
+                                        <div className="min-w-0">
+                                          <p className="truncate font-semibold text-white">
+                                            {blog.title}
+                                          </p>
+                                          <p className="truncate font-mono text-[10px] text-white/55">
+                                            /{blog.slug}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-3 text-white/80">{authorName}</td>
+                                    <td className="px-4 py-3">
+                                      <span className="border border-white/20 px-2 py-0.5 font-mono text-[10px] text-white/80">
+                                        {blog.category?.name || "Uncategorized"}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <span
+                                        className={`px-2 py-0.5 font-mono text-[10px] font-bold ${
+                                          blog.status === "PUBLISHED"
+                                            ? "bg-white text-navy"
+                                            : "border border-white/25 text-white/80"
+                                        }`}
+                                      >
+                                        {blog.status}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 font-mono text-[11px] text-white/70">
+                                      {blog.readingTime || 1} min
+                                    </td>
+                                    <td className="px-4 py-3 font-mono text-[10px] text-white/60">
+                                      <div>C: {new Date(blog.createdAt).toLocaleDateString()}</div>
+                                      <div>U: {new Date(blog.updatedAt).toLocaleDateString()}</div>
+                                    </td>
+                                    <td className="px-4 py-3 text-right">
+                                      <div className="inline-flex items-center gap-1.5">
+                                        <button
+                                          type="button"
+                                          onClick={() => openEditBlog(blog)}
+                                          className="border border-white/20 px-2.5 py-1 font-mono text-[10px] text-white uppercase hover:border-white"
+                                        >
+                                          Edit
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => confirmDeleteBlog(blog)}
+                                          className="border border-white/20 px-2.5 py-1 font-mono text-[10px] text-white/75 uppercase hover:border-white hover:text-white"
+                                        >
+                                          Delete
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      <PaginationBar
+                        page={blogsMeta.page}
+                        totalPages={blogsMeta.totalPages}
+                        total={blogsMeta.total}
+                        label="articles"
+                        onPageChange={(next) => {
+                          setBlogPage(next);
+                          void fetchBlogs(next);
                         }}
-                        className="inline-flex items-center gap-1 border border-white/25 px-2.5 py-1 text-xs text-white hover:border-white"
-                      >
-                        <ExternalLink className="h-3 w-3" /> Copy URL
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void deleteMedia(item.id)}
-                        className="inline-flex items-center gap-1 border border-white/25 px-2.5 py-1 text-xs text-white/75 hover:border-white hover:text-white"
-                      >
-                        <Trash2 className="h-3 w-3" /> Delete
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 7. CONTACT MESSAGES TAB */}
-          {activeTab === "messages" && (
-            <div className="space-y-4">
-              <div className="flex justify-end">
-                <select
-                  value={messageStatusFilter}
-                  onChange={(e) => setMessageStatusFilter(e.target.value)}
-                  className="border border-white/20 bg-navy px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
-                >
-                  <option value="">All Messages</option>
-                  <option value="NEW">NEW</option>
-                  <option value="READ">READ</option>
-                  <option value="ARCHIVED">ARCHIVED</option>
-                </select>
-              </div>
-
-              <div className="divide-y divide-white/10 border border-white/15 bg-white/[0.02]">
-                {messages.length === 0 ? (
-                  <p className="p-6 text-sm text-white/60">No contact messages found.</p>
-                ) : (
-                  messages.map((msg) => (
-                    <div key={msg.id} className="space-y-3 p-5">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className="border border-white/30 px-2 py-0.5 font-mono text-[10px] uppercase text-white">
-                            {msg.status}
-                          </span>
-                          <h3 className="text-sm font-semibold text-white">{msg.subject}</h3>
-                        </div>
-                        <span className="font-mono text-xs text-white/60">
-                          {new Date(msg.createdAt).toLocaleString()}
-                        </span>
-                      </div>
-                      <p className="font-mono text-xs text-white/80">
-                        From: {msg.name} &lt;{msg.email}&gt;
-                      </p>
-                      <p className="whitespace-pre-line text-sm text-white/90">{msg.message}</p>
-                      <div className="flex gap-2 pt-2">
-                        {msg.status !== "READ" && (
-                          <button
-                            type="button"
-                            onClick={() => void updateMessageStatus(msg.id, "READ")}
-                            className="inline-flex items-center gap-1 border border-white/25 px-3 py-1 text-xs text-white hover:border-white"
-                          >
-                            <Check className="h-3.5 w-3.5" /> Mark Read
-                          </button>
-                        )}
-                        {msg.status !== "ARCHIVED" && (
-                          <button
-                            type="button"
-                            onClick={() => void updateMessageStatus(msg.id, "ARCHIVED")}
-                            className="inline-flex items-center gap-1 border border-white/25 px-3 py-1 text-xs text-white/75 hover:border-white hover:text-white"
-                          >
-                            Archive
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* 8. WEBSITE SETTINGS TAB */}
-          {activeTab === "settings" && (
-            <form
-              onSubmit={(e) => void saveSettings(e)}
-              className="space-y-5 border border-white/15 bg-white/[0.02] p-6"
-            >
-              <h2 className="text-base font-semibold uppercase tracking-wider text-white">
-                Website Profile, Biography & SEO Settings
-              </h2>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="block text-xs font-mono uppercase text-white/70">
-                    Site Title
-                  </label>
-                  <input
-                    type="text"
-                    value={siteSettings.siteTitle}
-                    onChange={(e) =>
-                      setSiteSettings({ ...siteSettings, siteTitle: e.target.value })
-                    }
-                    className="mt-1 w-full border border-white/20 bg-navy px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
-                  />
+                      />
+                    </>
+                  )}
                 </div>
-                <div>
-                  <label className="block text-xs font-mono uppercase text-white/70">
-                    Tagline
-                  </label>
-                  <input
-                    type="text"
-                    value={siteSettings.tagline}
-                    onChange={(e) =>
-                      setSiteSettings({ ...siteSettings, tagline: e.target.value })
-                    }
-                    className="mt-1 w-full border border-white/20 bg-navy px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
-                  />
-                </div>
-              </div>
+              )}
 
-              <div>
-                <label className="block text-xs font-mono uppercase text-white/70">
-                  Hero Headline
-                </label>
-                <input
-                  type="text"
-                  value={siteSettings.heroTitle}
-                  onChange={(e) =>
-                    setSiteSettings({ ...siteSettings, heroTitle: e.target.value })
-                  }
-                  className="mt-1 w-full border border-white/20 bg-navy px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-mono uppercase text-white/70">
-                  Hero Introduction
-                </label>
-                <textarea
-                  rows={2}
-                  value={siteSettings.heroDescription}
-                  onChange={(e) =>
-                    setSiteSettings({ ...siteSettings, heroDescription: e.target.value })
-                  }
-                  className="mt-1 w-full border border-white/20 bg-navy px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-mono uppercase text-white/70">
-                  Full Biography
-                </label>
-                <textarea
-                  rows={5}
-                  value={siteSettings.biography}
-                  onChange={(e) =>
-                    setSiteSettings({ ...siteSettings, biography: e.target.value })
-                  }
-                  className="mt-1 w-full border border-white/20 bg-navy px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="block text-xs font-mono uppercase text-white/70">
-                    Skills (JSON Array)
-                  </label>
-                  <textarea
-                    rows={6}
-                    value={skillsJson}
-                    onChange={(e) => setSkillsJson(e.target.value)}
-                    className="mt-1 w-full border border-white/20 bg-navy p-3 font-mono text-xs text-white focus:border-white focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-mono uppercase text-white/70">
-                    Career Interests (One per line)
-                  </label>
-                  <textarea
-                    rows={6}
-                    value={interestsText}
-                    onChange={(e) => setInterestsText(e.target.value)}
-                    className="mt-1 w-full border border-white/20 bg-navy p-3 font-mono text-xs text-white focus:border-white focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end border-t border-white/15 pt-4">
-                <button
-                  type="submit"
-                  className="bg-white px-6 py-2 text-xs font-semibold uppercase tracking-wider text-navy hover:bg-white/90"
-                >
-                  Save Website Settings
-                </button>
-              </div>
-            </form>
-          )}
-
-          {/* 9. AUDIT LOGS TAB */}
-          {activeTab === "audit" && (
-            <div className="space-y-4">
-              <div className="flex justify-end">
-                <select
-                  value={auditCategoryFilter}
-                  onChange={(e) => setAuditCategoryFilter(e.target.value)}
-                  className="border border-white/20 bg-navy px-3 py-2 text-sm text-white focus:border-white focus:outline-none"
-                >
-                  <option value="">All Categories</option>
-                  <option value="AUTH">AUTH</option>
-                  <option value="ADMIN">ADMIN</option>
-                  <option value="SECURITY">SECURITY</option>
-                  <option value="SYSTEM">SYSTEM</option>
-                </select>
-              </div>
-
-              <div className="divide-y divide-white/10 border border-white/15 bg-white/[0.02]">
-                {auditLogs.length === 0 ? (
-                  <p className="p-6 text-sm text-white/60">No audit logs found.</p>
-                ) : (
-                  auditLogs.map((log) => (
-                    <div
-                      key={log.id}
-                      className="flex flex-col justify-between gap-2 p-4 text-xs sm:flex-row sm:items-center"
+              {/* ========================================================= */}
+              {/* 3. PROJECT MANAGEMENT (LISTING + RICH EDITOR/SCREENSHOTS) */}
+              {/* ========================================================= */}
+              {activeSection === "projects" && (
+                <div className="space-y-6">
+                  {projectEditorOpen ? (
+                    <form
+                      onSubmit={handleSaveProject}
+                      className="space-y-6 border border-white/20 bg-white/[0.02] p-6"
                     >
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="border border-white/30 px-1.5 py-0.5 font-mono text-[10px] uppercase text-white">
-                            {log.category}
-                          </span>
-                          <span className="font-mono text-[10px] uppercase text-white/70">
-                            {log.outcome}
-                          </span>
-                          <span className="font-mono font-semibold text-white">{log.action}</span>
+                      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/15 pb-4">
+                        <div>
+                          <p className="font-mono text-[10px] uppercase tracking-widest text-white/60">
+                            {editingProjectId ? "Editing Portfolio Project" : "New Portfolio Project"}
+                          </p>
+                          <h2 className="mt-0.5 text-lg font-bold text-white">
+                            {projectTitle || "Untitled Engineering Project"}
+                          </h2>
                         </div>
-                        <p className="font-mono text-white/70">
-                          Actor: {log.actorEmail ?? "system/anonymous"} · IP: {log.ip ?? "n/a"}
-                          {log.targetType ? ` · Target: ${log.targetType} (${log.targetId ?? ""})` : ""}
-                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="submit"
+                            disabled={saving}
+                            className="bg-white px-5 py-2 text-xs font-bold tracking-wider text-navy uppercase transition hover:bg-white/90 disabled:opacity-50"
+                          >
+                            {saving
+                              ? "Saving..."
+                              : editingProjectId
+                                ? "Update Project"
+                                : "Save Project"}
+                          </button>
+                          {editingProjectId && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const found = projects.find((p) => p.id === editingProjectId);
+                                if (found) confirmDeleteProject(found);
+                              }}
+                              className="border border-white/25 px-3.5 py-2 text-xs font-semibold text-white uppercase hover:border-white"
+                            >
+                              Delete
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setProjectEditorOpen(false)}
+                            className="border border-white/20 px-3.5 py-2 text-xs text-white/75 uppercase hover:border-white hover:text-white"
+                          >
+                            Close
+                          </button>
+                        </div>
                       </div>
-                      <span className="font-mono text-white/60">
-                        {new Date(log.createdAt).toLocaleString()}
-                      </span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
+
+                      <div className="grid gap-6 lg:grid-cols-12">
+                        <div className="space-y-5 lg:col-span-8">
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <div>
+                              <label className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-white/70">
+                                Project Title
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                value={projectTitle}
+                                onChange={(e) => {
+                                  setProjectTitle(e.target.value);
+                                  if (!editingProjectId)
+                                    setProjectSlug(slugifyText(e.target.value));
+                                }}
+                                placeholder="e.g. Dezaakir Distributed AI Publishing Platform"
+                                className="w-full border border-white/25 bg-navy px-3.5 py-2.5 text-sm text-white focus:border-white focus:outline-none"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-white/70">
+                                URL Slug
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                value={projectSlug}
+                                onChange={(e) => setProjectSlug(slugifyText(e.target.value))}
+                                placeholder="dezaakir-platform"
+                                className="w-full border border-white/25 bg-navy px-3.5 py-2.5 font-mono text-sm text-white focus:border-white focus:outline-none"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-white/70">
+                              Short Summary
+                            </label>
+                            <textarea
+                              rows={2}
+                              required
+                              value={projectSummary}
+                              onChange={(e) => setProjectSummary(e.target.value)}
+                              placeholder="Concise one-sentence summary of the project..."
+                              className="w-full border border-white/25 bg-navy px-3.5 py-2 text-sm text-white focus:border-white focus:outline-none"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-white/70">
+                              Detailed Case Study & Architecture Description
+                            </label>
+                            <RichTextEditor
+                              content={projectDescription}
+                              onChange={setProjectDescription}
+                            />
+                          </div>
+
+                          {/* Multiple Project Screenshots Manager */}
+                          <div className="border border-white/15 bg-navy p-4">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <h4 className="text-xs font-bold uppercase tracking-wider text-white">
+                                  Project Screenshots Gallery ({projectScreenshots.length})
+                                </h4>
+                                <p className="mt-0.5 text-[11px] text-white/60">
+                                  Add multiple screenshots to showcase interfaces and architecture diagrams
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setMediaPickerTarget("projectScreenshot")}
+                                className="inline-flex items-center gap-1.5 bg-white px-3 py-1.5 text-xs font-bold text-navy uppercase"
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                                Add Screenshot
+                              </button>
+                            </div>
+
+                            {projectScreenshots.length > 0 && (
+                              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                                {projectScreenshots.map((shot, idx) => (
+                                  <div
+                                    key={`${shot.publicId}-${idx}`}
+                                    className="group relative border border-white/20 bg-white/5"
+                                  >
+                                    <div className="aspect-video w-full overflow-hidden">
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img
+                                        src={shot.url}
+                                        alt={shot.alt || `Screenshot ${idx + 1}`}
+                                        className="h-full w-full object-cover"
+                                      />
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setProjectScreenshots((prev) =>
+                                          prev.filter((_, i) => i !== idx)
+                                        )
+                                      }
+                                      className="w-full border-t border-white/15 bg-navy py-1 font-mono text-[10px] text-white/80 uppercase hover:text-white"
+                                    >
+                                      Remove Screenshot
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="space-y-5 lg:col-span-4">
+                          {/* Project Thumbnail */}
+                          <div className="border border-white/15 bg-navy p-4">
+                            <label className="mb-2 block font-mono text-[10px] uppercase tracking-wider text-white/70">
+                              Project Thumbnail Image
+                            </label>
+                            {projectCoverImage?.url ? (
+                              <div className="space-y-2.5">
+                                <div className="aspect-video w-full overflow-hidden border border-white/15">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={projectCoverImage.url}
+                                    alt={projectCoverImage.alt || projectTitle}
+                                    className="h-full w-full object-cover"
+                                  />
+                                </div>
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setMediaPickerTarget("projectThumb")}
+                                    className="flex-1 border border-white/25 py-1.5 text-xs font-semibold text-white uppercase hover:border-white"
+                                  >
+                                    Change
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setProjectCoverImage(undefined)}
+                                    className="border border-white/20 px-3 py-1.5 text-xs text-white/70 hover:border-white hover:text-white"
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setMediaPickerTarget("projectThumb")}
+                                className="flex aspect-video w-full flex-col items-center justify-center border border-dashed border-white/25 p-4 text-center transition hover:border-white"
+                              >
+                                <ImageIcon className="h-5 w-5 text-white/70" />
+                                <span className="mt-1.5 text-xs font-semibold text-white">
+                                  Upload or Select Thumbnail
+                                </span>
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Technologies & Links */}
+                          <div className="space-y-3 border border-white/15 bg-navy p-4">
+                            <div>
+                              <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-white/70">
+                                Technologies Used (Comma Separated)
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                value={projectTechInput}
+                                onChange={(e) => setProjectTechInput(e.target.value)}
+                                placeholder="TypeScript, Next.js, Bun, MongoDB"
+                                className="w-full border border-white/25 bg-navy px-3 py-2 text-xs text-white focus:border-white focus:outline-none"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-white/70">
+                                GitHub Repository URL
+                              </label>
+                              <input
+                                type="url"
+                                value={projectGithubUrl}
+                                onChange={(e) => setProjectGithubUrl(e.target.value)}
+                                placeholder="https://github.com/..."
+                                className="w-full border border-white/25 bg-navy px-3 py-2 text-xs text-white focus:border-white focus:outline-none"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-white/70">
+                                Live Demo URL
+                              </label>
+                              <input
+                                type="url"
+                                value={projectLiveUrl}
+                                onChange={(e) => setProjectLiveUrl(e.target.value)}
+                                placeholder="https://..."
+                                className="w-full border border-white/25 bg-navy px-3 py-2 text-xs text-white focus:border-white focus:outline-none"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Publication & Category */}
+                          <div className="space-y-3 border border-white/15 bg-navy p-4">
+                            <div>
+                              <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-white/70">
+                                Publication Status
+                              </label>
+                              <select
+                                value={projectStatus}
+                                onChange={(e) =>
+                                  setProjectStatus(e.target.value as "DRAFT" | "PUBLISHED")
+                                }
+                                className="w-full border border-white/25 bg-navy px-3 py-2 text-xs text-white focus:border-white focus:outline-none"
+                              >
+                                <option value="PUBLISHED">PUBLISHED</option>
+                                <option value="DRAFT">DRAFT</option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-white/70">
+                                Category
+                              </label>
+                              <select
+                                value={projectCategoryId}
+                                onChange={(e) => setProjectCategoryId(e.target.value)}
+                                className="w-full border border-white/25 bg-navy px-3 py-2 text-xs text-white focus:border-white focus:outline-none"
+                              >
+                                <option value="">Uncategorized</option>
+                                {categories
+                                  .filter((c) => c.type === "PROJECT")
+                                  .map((c) => (
+                                    <option key={c.id} value={c.id}>
+                                      {c.name}
+                                    </option>
+                                  ))}
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-white/70">
+                                Display Order (Lower appears first)
+                              </label>
+                              <input
+                                type="number"
+                                value={projectOrder}
+                                onChange={(e) => setProjectOrder(Number(e.target.value))}
+                                className="w-full border border-white/25 bg-navy px-3 py-2 font-mono text-xs text-white focus:border-white focus:outline-none"
+                              />
+                            </div>
+
+                            <label className="flex items-center gap-2 pt-1 text-xs text-white/85">
+                              <input
+                                type="checkbox"
+                                checked={projectFeatured}
+                                onChange={(e) => setProjectFeatured(e.target.checked)}
+                                className="h-4 w-4 accent-white"
+                              />
+                              Feature on Homepage
+                            </label>
+                          </div>
+
+                          {/* Project SEO */}
+                          <div className="space-y-3 border border-white/15 bg-navy p-4">
+                            <p className="font-mono text-[10px] uppercase tracking-wider text-white/70">
+                              Project SEO Metadata
+                            </p>
+                            <input
+                              type="text"
+                              value={projectSeoTitle}
+                              onChange={(e) => setProjectSeoTitle(e.target.value)}
+                              placeholder="Custom SEO Title..."
+                              className="w-full border border-white/20 bg-navy px-3 py-2 text-xs text-white focus:border-white focus:outline-none"
+                            />
+                            <textarea
+                              rows={3}
+                              value={projectSeoDescription}
+                              onChange={(e) => setProjectSeoDescription(e.target.value)}
+                              placeholder="Custom SEO Meta Description..."
+                              className="w-full border border-white/20 bg-navy px-3 py-2 text-xs text-white focus:border-white focus:outline-none"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </form>
+                  ) : (
+                    /* Project Listing View */
+                    <>
+                      <div className="flex flex-wrap items-center justify-between gap-3 border border-white/15 bg-white/[0.02] p-4">
+                        <div className="flex flex-1 flex-wrap items-center gap-2.5">
+                          <div className="relative min-w-[220px] flex-1">
+                            <Search className="pointer-events-none absolute top-2.5 left-3 h-3.5 w-3.5 text-white/50" />
+                            <input
+                              type="text"
+                              value={projectSearch}
+                              onChange={(e) => setProjectSearch(e.target.value)}
+                              onKeyDown={(e) => e.key === "Enter" && void fetchProjects(1)}
+                              placeholder="Search projects by title, summary, or technology..."
+                              className="w-full border border-white/20 bg-navy py-2 pr-3 pl-8 text-xs text-white focus:border-white focus:outline-none"
+                            />
+                          </div>
+
+                          <select
+                            value={projectStatusFilter}
+                            onChange={(e) => setProjectStatusFilter(e.target.value)}
+                            className="border border-white/20 bg-navy px-3 py-2 text-xs text-white focus:border-white focus:outline-none"
+                          >
+                            <option value="">All Statuses</option>
+                            <option value="PUBLISHED">PUBLISHED</option>
+                            <option value="DRAFT">DRAFT</option>
+                          </select>
+
+                          <select
+                            value={projectCategoryFilter}
+                            onChange={(e) => setProjectCategoryFilter(e.target.value)}
+                            className="border border-white/20 bg-navy px-3 py-2 text-xs text-white focus:border-white focus:outline-none"
+                          >
+                            <option value="">All Categories</option>
+                            {categories
+                              .filter((c) => c.type === "PROJECT")
+                              .map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.name}
+                                </option>
+                              ))}
+                          </select>
+
+                          <select
+                            value={projectSort}
+                            onChange={(e) =>
+                              setProjectSort(e.target.value as "newest" | "oldest" | "title")
+                            }
+                            className="border border-white/20 bg-navy px-3 py-2 text-xs text-white focus:border-white focus:outline-none"
+                          >
+                            <option value="newest">Sort: Default / Newest</option>
+                            <option value="oldest">Sort: Oldest</option>
+                            <option value="title">Sort: Title (A–Z)</option>
+                          </select>
+
+                          <button
+                            type="button"
+                            onClick={() => void fetchProjects(1)}
+                            className="border border-white/25 px-3.5 py-2 text-xs font-semibold text-white uppercase hover:border-white"
+                          >
+                            Search
+                          </button>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={openNewProjectEditor}
+                          className="inline-flex items-center gap-1.5 bg-white px-4 py-2 text-xs font-bold tracking-wider text-navy uppercase transition hover:bg-white/90"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          Add New Project
+                        </button>
+                      </div>
+
+                      {projectsLoading ? (
+                        <TableSkeleton rows={5} />
+                      ) : projects.length === 0 ? (
+                        <EmptyState
+                          title="No portfolio projects found"
+                          description="Add software engineering projects with screenshots, tech stacks, and repository links."
+                          actionLabel="Add First Project"
+                          onAction={openNewProjectEditor}
+                        />
+                      ) : (
+                        <div className="overflow-x-auto border border-white/15 bg-white/[0.01]">
+                          <table className="w-full text-left text-xs">
+                            <thead className="border-b border-white/15 bg-white/[0.03] font-mono text-[10px] uppercase text-white/60">
+                              <tr>
+                                <th className="px-4 py-3">Project</th>
+                                <th className="px-4 py-3">Technologies</th>
+                                <th className="px-4 py-3">Links</th>
+                                <th className="px-4 py-3">Featured</th>
+                                <th className="px-4 py-3">Status</th>
+                                <th className="px-4 py-3 text-right">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-white/10">
+                              {projects.map((proj) => (
+                                <tr key={proj.id} className="hover:bg-white/[0.02]">
+                                  <td className="px-4 py-3">
+                                    <div className="flex items-center gap-3">
+                                      <div className="h-10 w-14 shrink-0 overflow-hidden border border-white/15 bg-white/5">
+                                        {proj.coverImage?.url ? (
+                                          /* eslint-disable-next-line @next/next/no-img-element */
+                                          <img
+                                            src={proj.coverImage.url}
+                                            alt={proj.title}
+                                            className="h-full w-full object-cover"
+                                          />
+                                        ) : (
+                                          <div className="flex h-full w-full items-center justify-center font-mono text-[9px] text-white/40">
+                                            NO IMG
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div>
+                                        <p className="font-semibold text-white">{proj.title}</p>
+                                        <p className="font-mono text-[10px] text-white/55">
+                                          /{proj.slug} · {(proj.images || []).length} screenshot(s)
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <div className="flex flex-wrap gap-1">
+                                      {(proj.technologies || []).slice(0, 4).map((t) => (
+                                        <span
+                                          key={t}
+                                          className="border border-white/20 px-1.5 py-0.5 font-mono text-[10px] text-white/80"
+                                        >
+                                          {t}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3 font-mono text-[10px] text-white/75">
+                                    <div className="flex gap-2">
+                                      {proj.githubUrl && (
+                                        <a
+                                          href={proj.githubUrl}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="underline hover:text-white"
+                                        >
+                                          GitHub
+                                        </a>
+                                      )}
+                                      {proj.liveUrl && (
+                                        <a
+                                          href={proj.liveUrl}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="underline hover:text-white"
+                                        >
+                                          Live
+                                        </a>
+                                      )}
+                                      {!proj.githubUrl && !proj.liveUrl && "—"}
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3 font-mono text-[10px]">
+                                    {proj.featured ? (
+                                      <span className="border border-white px-2 py-0.5 text-white">
+                                        FEATURED
+                                      </span>
+                                    ) : (
+                                      <span className="text-white/45">Standard</span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span
+                                      className={`px-2 py-0.5 font-mono text-[10px] font-bold ${
+                                        proj.status === "PUBLISHED"
+                                          ? "bg-white text-navy"
+                                          : "border border-white/25 text-white/80"
+                                      }`}
+                                    >
+                                      {proj.status}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 text-right">
+                                    <div className="inline-flex items-center gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => openEditProject(proj)}
+                                        className="border border-white/20 px-2.5 py-1 font-mono text-[10px] text-white uppercase hover:border-white"
+                                      >
+                                        Edit
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => confirmDeleteProject(proj)}
+                                        className="border border-white/20 px-2.5 py-1 font-mono text-[10px] text-white/75 uppercase hover:border-white hover:text-white"
+                                      >
+                                        Delete
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      <PaginationBar
+                        page={projectsMeta.page}
+                        totalPages={projectsMeta.totalPages}
+                        total={projectsMeta.total}
+                        label="projects"
+                        onPageChange={(next) => {
+                          setProjectPage(next);
+                          void fetchProjects(next);
+                        }}
+                      />
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* ========================================================= */}
+              {/* 4. CATEGORIES MANAGEMENT                                  */}
+              {/* ========================================================= */}
+              {activeSection === "categories" && (
+                <AdminCategoriesView
+                  categories={categories}
+                  onSaveCategory={handleSaveCategory}
+                  onDeleteCategory={confirmDeleteCategory}
+                />
+              )}
+
+              {/* ========================================================= */}
+              {/* 5. TAGS MANAGEMENT                                        */}
+              {/* ========================================================= */}
+              {activeSection === "tags" && (
+                <AdminTagsView
+                  tags={tags}
+                  onSaveTag={handleSaveTag}
+                  onDeleteTag={confirmDeleteTag}
+                />
+              )}
+
+              {/* ========================================================= */}
+              {/* 6. MEDIA LIBRARY                                          */}
+              {/* ========================================================= */}
+              {activeSection === "media" && (
+                <AdminMediaLibraryView
+                  media={media}
+                  loading={mediaLoading}
+                  uploading={uploadingMedia}
+                  search={mediaSearch}
+                  setSearch={setMediaSearch}
+                  folderFilter={mediaFolderFilter}
+                  setFolderFilter={setMediaFolderFilter}
+                  uploadFolder={uploadFolder}
+                  setUploadFolder={setUploadFolder}
+                  uploadAlt={uploadAlt}
+                  setUploadAlt={setUploadAlt}
+                  onSearch={() => void fetchMedia()}
+                  onUploadFile={handleUploadMediaFile}
+                  onCopyUrl={(url) => {
+                    void navigator.clipboard.writeText(url);
+                    pushToast("success", "Copied to clipboard", url);
+                  }}
+                  onDeleteMedia={confirmDeleteMedia}
+                />
+              )}
+
+              {/* ========================================================= */}
+              {/* 7. CONTACT MESSAGES                                       */}
+              {/* ========================================================= */}
+              {activeSection === "messages" && (
+                <AdminMessagesView
+                  messages={messages}
+                  loading={messagesLoading}
+                  statusFilter={messageStatusFilter}
+                  setStatusFilter={setMessageStatusFilter}
+                  search={messageSearch}
+                  setSearch={setMessageSearch}
+                  onSearch={() => void fetchMessages()}
+                  onUpdateStatus={handleUpdateMessageStatus}
+                  onDeleteMessage={confirmDeleteMessage}
+                />
+              )}
+
+              {/* ========================================================= */}
+              {/* 8. USER MANAGEMENT                                        */}
+              {/* ========================================================= */}
+              {activeSection === "users" && (
+                <AdminUsersView
+                  users={users}
+                  loading={usersLoading}
+                  search={userSearch}
+                  setSearch={setUserSearch}
+                  roleFilter={userRoleFilter}
+                  setRoleFilter={setUserRoleFilter}
+                  statusFilter={userStatusFilter}
+                  setStatusFilter={setUserStatusFilter}
+                  onSearch={() => void fetchUsers()}
+                  onUpdateUser={handleUpdateUser}
+                  onInspectUser={handleInspectUser}
+                  onRevokeSessions={handleRevokeUserSessions}
+                  inspectedUser={inspectedUser}
+                  inspectedSessions={inspectedSessions}
+                  inspectedActivity={inspectedActivity}
+                  onCloseInspector={() => setInspectedUser(null)}
+                />
+              )}
+
+              {/* ========================================================= */}
+              {/* 9. SYSTEM ANALYTICS                                       */}
+              {/* ========================================================= */}
+              {activeSection === "analytics" && (
+                <AdminAnalyticsView overview={overview} blogs={blogs} projects={projects} />
+              )}
+
+              {/* ========================================================= */}
+              {/* 10. SITE SETTINGS                                         */}
+              {/* ========================================================= */}
+              {activeSection === "settings" && settings && (
+                <AdminSiteSettingsView
+                  settings={settings}
+                  setSettings={setSettings}
+                  systemStatus={overview?.systemStatus}
+                  saving={saving}
+                  onSave={handleSaveSettings}
+                  onOpenMediaPicker={(target) => setMediaPickerTarget(target)}
+                />
+              )}
+
+              {/* ========================================================= */}
+              {/* 11. SEO SETTINGS                                          */}
+              {/* ========================================================= */}
+              {activeSection === "seo" && settings && (
+                <AdminSeoSettingsView
+                  settings={settings}
+                  setSettings={setSettings}
+                  blogs={blogs}
+                  projects={projects}
+                  saving={saving}
+                  onSave={handleSaveSettings}
+                  onOpenMediaPicker={(target) => setMediaPickerTarget(target)}
+                  onEditBlog={openEditBlog}
+                  onEditProject={openEditProject}
+                />
+              )}
+
+              {/* ========================================================= */}
+              {/* 12. AUDIT LOGS                                            */}
+              {/* ========================================================= */}
+              {activeSection === "audit" && (
+                <AdminAuditLogsView
+                  logs={auditLogs}
+                  meta={auditMeta}
+                  loading={auditLoading}
+                  categoryFilter={auditCategoryFilter}
+                  setCategoryFilter={setAuditCategoryFilter}
+                  outcomeFilter={auditOutcomeFilter}
+                  setOutcomeFilter={setAuditOutcomeFilter}
+                  actionSearch={auditActionSearch}
+                  setActionSearch={setAuditActionSearch}
+                  onSearch={() => void fetchAuditLogs(1)}
+                  onPageChange={(next) => {
+                    setAuditPage(next);
+                    void fetchAuditLogs(next);
+                  }}
+                />
+              )}
+            </>
           )}
-        </section>
+        </main>
       </div>
+
+      {/* Global Media Picker Modal */}
+      <MediaPickerModal
+        open={mediaPickerTarget !== null}
+        defaultFolder={
+          mediaPickerTarget === "blogCover"
+            ? "blogs"
+            : mediaPickerTarget === "projectThumb" || mediaPickerTarget === "projectScreenshot"
+              ? "projects"
+              : mediaPickerTarget === "profile"
+                ? "profile"
+                : "general"
+        }
+        onClose={() => setMediaPickerTarget(null)}
+        onSelect={handleMediaPickerSelect}
+      />
+
+      {/* Global Confirmation Dialog */}
+      <ConfirmDialog
+        state={confirmState}
+        busy={confirmBusy}
+        onClose={() => {
+          if (!confirmBusy) setConfirmState(null);
+        }}
+      />
+
+      {/* Global Toast Notification Stack */}
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }

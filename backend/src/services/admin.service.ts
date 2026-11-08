@@ -1,4 +1,5 @@
 import type { Request } from "express";
+import { env } from "../config/env.js";
 import {
   AuditLog,
   Blog,
@@ -40,6 +41,11 @@ function serializeSafeUser(doc: { toJSON: () => unknown; _id: unknown }): Record
 }
 
 export async function getAdminOverview() {
+  const now = new Date();
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+  const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+
   const [
     totalBlogs,
     publishedBlogs,
@@ -54,7 +60,23 @@ export async function getAdminOverview() {
     totalMessages,
     unreadMessages,
     totalMedia,
+    blogsLast30d,
+    blogsPrev30d,
+    projectsLast30d,
+    projectsPrev30d,
+    usersLast30d,
+    usersPrev30d,
+    messagesLast30d,
+    messagesPrev30d,
     recentLogs,
+    recentBlogDocs,
+    recentProjectDocs,
+    recentUserDocs,
+    recentMessageDocs,
+    blogsForSeries,
+    projectsForSeries,
+    usersForSeries,
+    messagesForSeries,
   ] = await Promise.all([
     Blog.countDocuments({}),
     Blog.countDocuments({ status: "PUBLISHED" }),
@@ -69,11 +91,112 @@ export async function getAdminOverview() {
     ContactMessage.countDocuments({}),
     ContactMessage.countDocuments({ status: "NEW" }),
     Media.countDocuments({}),
+    Blog.countDocuments({ createdAt: trusted({ $gte: thirtyDaysAgo }) }),
+    Blog.countDocuments({ createdAt: trusted({ $gte: sixtyDaysAgo, $lt: thirtyDaysAgo }) }),
+    Project.countDocuments({ createdAt: trusted({ $gte: thirtyDaysAgo }) }),
+    Project.countDocuments({ createdAt: trusted({ $gte: sixtyDaysAgo, $lt: thirtyDaysAgo }) }),
+    User.countDocuments({ createdAt: trusted({ $gte: thirtyDaysAgo }) }),
+    User.countDocuments({ createdAt: trusted({ $gte: sixtyDaysAgo, $lt: thirtyDaysAgo }) }),
+    ContactMessage.countDocuments({ createdAt: trusted({ $gte: thirtyDaysAgo }) }),
+    ContactMessage.countDocuments({ createdAt: trusted({ $gte: sixtyDaysAgo, $lt: thirtyDaysAgo }) }),
     AuditLog.find({})
       .sort({ createdAt: -1 })
       .limit(12)
       .populate("actor", "name email role"),
+    Blog.find({})
+      .sort({ updatedAt: -1 })
+      .limit(5)
+      .populate("category", "name slug")
+      .populate("author", "name"),
+    Project.find({})
+      .sort({ updatedAt: -1 })
+      .limit(5)
+      .populate("category", "name slug"),
+    User.find({})
+      .sort({ createdAt: -1 })
+      .limit(5),
+    ContactMessage.find({})
+      .sort({ createdAt: -1 })
+      .limit(5),
+    Blog.find({ createdAt: trusted({ $gte: sixMonthsAgo }) }).select("status createdAt publishedAt").lean(),
+    Project.find({ createdAt: trusted({ $gte: sixMonthsAgo }) }).select("status createdAt publishedAt").lean(),
+    User.find({ createdAt: trusted({ $gte: sixMonthsAgo }) }).select("createdAt").lean(),
+    ContactMessage.find({ createdAt: trusted({ $gte: sixMonthsAgo }) }).select("createdAt").lean(),
   ]);
+
+  // Build 6-month buckets from real database timestamps
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const monthlySeries: {
+    monthKey: string;
+    label: string;
+    blogsCreated: number;
+    blogsPublished: number;
+    projectsCreated: number;
+    projectsPublished: number;
+    usersRegistered: number;
+    messagesReceived: number;
+  }[] = [];
+  const bucketMap = new Map<string, (typeof monthlySeries)[number]>();
+
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const label = `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
+    const bucket = {
+      monthKey: key,
+      label,
+      blogsCreated: 0,
+      blogsPublished: 0,
+      projectsCreated: 0,
+      projectsPublished: 0,
+      usersRegistered: 0,
+      messagesReceived: 0,
+    };
+    monthlySeries.push(bucket);
+    bucketMap.set(key, bucket);
+  }
+
+  const getKey = (dt?: Date | string) => {
+    if (!dt) return "";
+    const d = new Date(dt);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  };
+
+  for (const b of blogsForSeries) {
+    const cBucket = bucketMap.get(getKey(b.createdAt));
+    if (cBucket) cBucket.blogsCreated += 1;
+    if (b.status === "PUBLISHED") {
+      const pBucket = bucketMap.get(getKey(b.publishedAt ?? b.createdAt));
+      if (pBucket) pBucket.blogsPublished += 1;
+    }
+  }
+
+  for (const p of projectsForSeries) {
+    const cBucket = bucketMap.get(getKey(p.createdAt));
+    if (cBucket) cBucket.projectsCreated += 1;
+    if (p.status === "PUBLISHED") {
+      const pBucket = bucketMap.get(getKey(p.publishedAt ?? p.createdAt));
+      if (pBucket) pBucket.projectsPublished += 1;
+    }
+  }
+
+  for (const u of usersForSeries) {
+    const uBucket = bucketMap.get(getKey(u.createdAt));
+    if (uBucket) uBucket.usersRegistered += 1;
+  }
+
+  for (const m of messagesForSeries) {
+    const mBucket = bucketMap.get(getKey(m.createdAt));
+    if (mBucket) mBucket.messagesReceived += 1;
+  }
+
+  const activeUsers = Math.max(0, totalUsers - suspendedUsers - unverifiedUsers);
+  const enrichedSeries = monthlySeries.map((pt) => ({
+    ...pt,
+    key: pt.monthKey,
+    blogsTotal: pt.blogsCreated,
+    projectsTotal: pt.projectsCreated,
+  }));
 
   return {
     stats: {
@@ -90,11 +213,78 @@ export async function getAdminOverview() {
       totalMessages,
       unreadMessages,
       totalMedia,
+      blogs: {
+        total: totalBlogs,
+        published: publishedBlogs,
+        drafts: draftBlogs,
+        scheduled: scheduledBlogs,
+      },
+      projects: {
+        total: totalProjects,
+        published: publishedProjects,
+        drafts: draftProjects,
+      },
+      users: {
+        total: totalUsers,
+        active: activeUsers,
+        suspended: suspendedUsers,
+        admins: 1,
+      },
+      messages: {
+        total: totalMessages,
+        unread: unreadMessages,
+      },
+      media: {
+        total: totalMedia,
+      },
     },
+    comparisons: {
+      blogsLast30d,
+      blogsPrev30d,
+      projectsLast30d,
+      projectsPrev30d,
+      usersLast30d,
+      usersPrev30d,
+      messagesLast30d,
+      messagesPrev30d,
+      blogsCreated: { last30Days: blogsLast30d, prev30Days: blogsPrev30d },
+      blogsPublished: { last30Days: publishedBlogs, prev30Days: blogsPrev30d },
+      projectsCreated: { last30Days: projectsLast30d, prev30Days: projectsPrev30d },
+      usersRegistered: { last30Days: usersLast30d, prev30Days: usersPrev30d },
+      messagesReceived: { last30Days: messagesLast30d, prev30Days: messagesPrev30d },
+    },
+    monthlySeries: enrichedSeries,
+    recentBlogs: recentBlogDocs.map((d) => {
+      const json = d.toJSON() as unknown as Record<string, unknown>;
+      return { ...json, _id: String(d._id), id: String(d._id) };
+    }),
+    recentProjects: recentProjectDocs.map((d) => {
+      const json = d.toJSON() as unknown as Record<string, unknown>;
+      return { ...json, _id: String(d._id), id: String(d._id) };
+    }),
+    recentUsers: recentUserDocs.map((d) => serializeSafeUser(d)),
+    recentMessages: recentMessageDocs.map((d) => {
+      const json = d.toJSON() as unknown as Record<string, unknown>;
+      return { ...json, _id: String(d._id), id: String(d._id) };
+    }),
     recentActivity: recentLogs.map((log) => {
       const json = log.toJSON() as unknown as Record<string, unknown>;
       return { ...json, _id: String(log._id), id: String(log._id) };
     }),
+    systemStatus: {
+      smtpConfigured: Boolean(env.SMTP_USER && env.SMTP_APP_PASSWORD),
+      emailConfigured: Boolean(env.SMTP_USER && env.SMTP_APP_PASSWORD),
+      smtpHost: env.SMTP_HOST,
+      smtpPort: env.SMTP_PORT,
+      emailFrom: env.EMAIL_FROM,
+      cloudinaryConfigured: Boolean(
+        env.CLOUDINARY_CLOUD_NAME && env.CLOUDINARY_API_KEY && env.CLOUDINARY_API_SECRET
+      ),
+      cloudinaryCloudName: env.CLOUDINARY_CLOUD_NAME || null,
+      frontendUrl: env.FRONTEND_URL,
+      nodeEnv: env.NODE_ENV,
+      environment: env.NODE_ENV,
+    },
   };
 }
 

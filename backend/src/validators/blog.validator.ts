@@ -16,6 +16,12 @@ export const ListBlogsQuerySchema = z.strictObject({
     .optional(),
   search: z.string().trim().max(100).optional(),
   status: z.enum(BLOG_STATUSES).optional(),
+  sort: z.enum(["newest", "oldest", "title"]).optional(),
+});
+
+export const BulkBlogActionSchema = z.strictObject({
+  ids: z.array(objectIdStr).min(1, "Select at least one article").max(50),
+  action: z.enum(["DELETE", "PUBLISH", "DRAFT"]),
 });
 
 export const BlogSlugParamSchema = z.strictObject({
@@ -73,3 +79,4 @@ export const UpdateBlogSchema = z.strictObject({
 export type ListBlogsQuery = z.infer<typeof ListBlogsQuerySchema>;
 export type CreateBlogInput = z.infer<typeof CreateBlogSchema>;
 export type UpdateBlogInput = z.infer<typeof UpdateBlogSchema>;
+export type BulkBlogActionInput = z.infer<typeof BulkBlogActionSchema>;

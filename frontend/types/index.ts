@@ -43,12 +43,14 @@ export interface CategoryItem {
   slug: string;
   type: "BLOG" | "PROJECT";
   description?: string;
+  usageCount?: number;
 }
 
 export interface TagItem {
   id: string;
   name: string;
   slug: string;
+  usageCount?: number;
 }
 
 export interface BlogArticle {
@@ -122,6 +124,7 @@ export interface EducationItem {
 export interface SiteSettingsData {
   siteTitle: string;
   tagline: string;
+  authorName?: string;
   heroTitle: string;
   heroDescription: string;
   biography: string;
@@ -130,6 +133,8 @@ export interface SiteSettingsData {
   location?: string;
   socialLinks: {
     github?: string;
+    facebook?: string;
+    tiktok?: string;
     linkedin?: string;
     x?: string;
     youtube?: string;
@@ -190,4 +195,113 @@ export interface PaginationMeta {
   limit: number;
   total: number;
   totalPages: number;
+}
+
+export interface OverviewStats {
+  blogs: {
+    total: number;
+    published: number;
+    drafts: number;
+    scheduled: number;
+  };
+  projects: {
+    total: number;
+    published: number;
+    drafts: number;
+  };
+  users: {
+    total: number;
+    active: number;
+    suspended: number;
+    admins: number;
+  };
+  messages: {
+    total: number;
+    unread: number;
+  };
+  media: {
+    total: number;
+  };
+  taxonomy?: {
+    categories: number;
+    tags: number;
+  };
+}
+
+export interface PeriodComparison {
+  last30Days: number;
+  prev30Days: number;
+}
+
+export interface OverviewComparisons {
+  blogsCreated: PeriodComparison;
+  blogsPublished: PeriodComparison;
+  projectsCreated: PeriodComparison;
+  usersRegistered: PeriodComparison;
+  messagesReceived: PeriodComparison;
+}
+
+export interface MonthlySeriesPoint {
+  key: string;
+  label: string;
+  blogsTotal: number;
+  blogsPublished: number;
+  projectsTotal: number;
+  projectsPublished: number;
+  usersRegistered: number;
+  messagesReceived: number;
+}
+
+export interface SystemStatusInfo {
+  emailConfigured: boolean;
+  emailFrom: string;
+  cloudinaryConfigured: boolean;
+  cloudinaryCloudName: string | null;
+  environment: string;
+}
+
+export interface AdminOverviewData {
+  stats: OverviewStats;
+  comparisons?: OverviewComparisons;
+  monthlySeries?: MonthlySeriesPoint[];
+  recentBlogs?: Array<{
+    id: string;
+    title: string;
+    slug: string;
+    status: "DRAFT" | "SCHEDULED" | "PUBLISHED";
+    readingTime?: number;
+    publishedAt?: string;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  recentProjects?: Array<{
+    id: string;
+    title: string;
+    slug: string;
+    status: "DRAFT" | "PUBLISHED";
+    featured: boolean;
+    publishedAt?: string;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  recentUsers?: Array<{
+    id: string;
+    name: string;
+    email: string;
+    role: Role;
+    status: UserStatus;
+    emailVerified: boolean;
+    lastLoginAt?: string;
+    createdAt: string;
+  }>;
+  recentMessages?: Array<{
+    id: string;
+    name: string;
+    email: string;
+    subject: string;
+    status: "NEW" | "READ" | "ARCHIVED";
+    createdAt: string;
+  }>;
+  recentActivity: AuditLogItem[];
+  systemStatus?: SystemStatusInfo;
 }

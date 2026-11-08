@@ -45,6 +45,7 @@ export const listMediaQuerySchema = z
     folder: z
       .enum(["dezaakir/blogs", "dezaakir/projects", "dezaakir/profile", "dezaakir/general"])
       .optional(),
+    search: z.string().trim().max(100).optional(),
   })
   .strict();
 
