@@ -69,12 +69,19 @@ export function ContactForm() {
     <form
       onSubmit={handleSubmit(onSubmit)}
       noValidate
-      className="space-y-6 rounded-xl border border-white/20 bg-white/[0.03] p-6 sm:p-8"
+      className="space-y-6 border border-white/20 bg-white/[0.02] p-6 sm:p-10"
     >
+      <div className="border-b border-white/15 pb-4">
+        <p className="font-mono text-[11px] uppercase tracking-widest text-white/55">
+          Direct Inquiry Form
+        </p>
+        <h2 className="mt-1 text-2xl font-bold tracking-tight text-white">Send a Message</h2>
+      </div>
+
       {serverSuccess && (
         <div
           role="status"
-          className="flex items-start gap-3 rounded-md border border-white bg-white/10 p-4 text-sm text-white"
+          className="flex items-start gap-3 border border-white bg-white px-4 py-3.5 text-sm font-medium text-navy"
         >
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{serverSuccess}</span>
@@ -84,7 +91,7 @@ export function ContactForm() {
       {serverError && (
         <div
           role="alert"
-          className="flex items-start gap-3 rounded-md border border-white bg-white/5 p-4 text-sm text-white"
+          className="flex items-start gap-3 border border-white bg-white/10 px-4 py-3.5 text-sm text-white"
         >
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{serverError}</span>
@@ -94,13 +101,22 @@ export function ContactForm() {
       {/* Hidden Honeypot Field for Automated Spam Protection */}
       <div className="hidden" aria-hidden="true">
         <label htmlFor="contact-website">Website</label>
-        <input id="contact-website" type="text" tabIndex={-1} autoComplete="off" {...register("website")} />
+        <input
+          id="contact-website"
+          type="text"
+          tabIndex={-1}
+          autoComplete="off"
+          {...register("website")}
+        />
       </div>
 
       <div className="grid gap-6 sm:grid-cols-2">
         <div>
-          <label htmlFor="contact-name" className="block font-mono text-xs font-medium text-white uppercase">
-            Full Name
+          <label
+            htmlFor="contact-name"
+            className="block font-mono text-xs font-semibold uppercase tracking-wider text-white/85"
+          >
+            Name
           </label>
           <input
             id="contact-name"
@@ -108,14 +124,19 @@ export function ContactForm() {
             autoComplete="name"
             placeholder="Your full name"
             {...register("name")}
-            className="mt-2 w-full rounded-md border border-white/25 bg-navy px-4 py-2.5 text-sm text-white placeholder:text-white/40 focus:border-white"
+            className="mt-2 w-full border border-white/25 bg-navy px-4 py-3 text-sm text-white placeholder:text-white/40 focus:border-white focus:outline-none"
           />
-          {errors.name && <p className="mt-1.5 text-xs text-white/80">· {errors.name.message}</p>}
+          {errors.name && (
+            <p className="mt-1.5 font-mono text-xs text-white/85">· {errors.name.message}</p>
+          )}
         </div>
 
         <div>
-          <label htmlFor="contact-email" className="block font-mono text-xs font-medium text-white uppercase">
-            Email Address
+          <label
+            htmlFor="contact-email"
+            className="block font-mono text-xs font-semibold uppercase tracking-wider text-white/85"
+          >
+            Email
           </label>
           <input
             id="contact-email"
@@ -123,14 +144,19 @@ export function ContactForm() {
             autoComplete="email"
             placeholder="you@example.com"
             {...register("email")}
-            className="mt-2 w-full rounded-md border border-white/25 bg-navy px-4 py-2.5 text-sm text-white placeholder:text-white/40 focus:border-white"
+            className="mt-2 w-full border border-white/25 bg-navy px-4 py-3 text-sm text-white placeholder:text-white/40 focus:border-white focus:outline-none"
           />
-          {errors.email && <p className="mt-1.5 text-xs text-white/80">· {errors.email.message}</p>}
+          {errors.email && (
+            <p className="mt-1.5 font-mono text-xs text-white/85">· {errors.email.message}</p>
+          )}
         </div>
       </div>
 
       <div>
-        <label htmlFor="contact-subject" className="block font-mono text-xs font-medium text-white uppercase">
+        <label
+          htmlFor="contact-subject"
+          className="block font-mono text-xs font-semibold uppercase tracking-wider text-white/85"
+        >
           Subject
         </label>
         <input
@@ -138,34 +164,47 @@ export function ContactForm() {
           type="text"
           placeholder="Project inquiry, collaboration, or technical question"
           {...register("subject")}
-          className="mt-2 w-full rounded-md border border-white/25 bg-navy px-4 py-2.5 text-sm text-white placeholder:text-white/40 focus:border-white"
+          className="mt-2 w-full border border-white/25 bg-navy px-4 py-3 text-sm text-white placeholder:text-white/40 focus:border-white focus:outline-none"
         />
-        {errors.subject && <p className="mt-1.5 text-xs text-white/80">· {errors.subject.message}</p>}
+        {errors.subject && (
+          <p className="mt-1.5 font-mono text-xs text-white/85">· {errors.subject.message}</p>
+        )}
       </div>
 
       <div>
-        <label htmlFor="contact-message" className="block font-mono text-xs font-medium text-white uppercase">
+        <label
+          htmlFor="contact-message"
+          className="block font-mono text-xs font-semibold uppercase tracking-wider text-white/85"
+        >
           Message
         </label>
         <textarea
           id="contact-message"
           rows={6}
-          placeholder="Describe your project, timeline, or question..."
+          placeholder="Tell me about your project, goals, or question..."
           {...register("message")}
-          className="mt-2 w-full rounded-md border border-white/25 bg-navy px-4 py-2.5 text-sm text-white placeholder:text-white/40 focus:border-white"
+          className="mt-2 w-full border border-white/25 bg-navy px-4 py-3 text-sm leading-relaxed text-white placeholder:text-white/40 focus:border-white focus:outline-none"
         />
-        {errors.message && <p className="mt-1.5 text-xs text-white/80">· {errors.message.message}</p>}
+        {errors.message && (
+          <p className="mt-1.5 font-mono text-xs text-white/85">· {errors.message.message}</p>
+        )}
       </div>
 
-      <div className="flex items-center justify-between pt-2">
-        <p className="font-mono text-xs text-white/60">Protected by rate limiting & input validation</p>
+      <div className="flex flex-col items-start justify-between gap-4 border-t border-white/15 pt-5 sm:flex-row sm:items-center">
+        <p className="font-mono text-xs text-white/60">
+          Protected by schema validation & rate limiting
+        </p>
         <button
           type="submit"
           disabled={isSubmitting}
-          className="inline-flex items-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-semibold text-navy transition hover:bg-white/90 disabled:opacity-50"
+          className="inline-flex w-full items-center justify-center gap-2 bg-white px-7 py-3.5 text-xs font-bold uppercase tracking-wider text-navy transition hover:bg-white/90 disabled:opacity-50 sm:w-auto"
         >
-          {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          {isSubmitting ? "Sending..." : "Send Message"}
+          {isSubmitting ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Send className="h-4 w-4" />
+          )}
+          <span>{isSubmitting ? "Sending Message..." : "Send Message"}</span>
         </button>
       </div>
     </form>

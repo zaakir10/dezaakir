@@ -61,12 +61,12 @@ export default function RegisterPage() {
 
   return (
     <main className="mx-auto flex max-w-md flex-col justify-center px-6 py-16 sm:py-24">
-      <div className="rounded-xl border border-white/20 bg-white/[0.03] p-6 sm:p-8">
+      <div className="border border-white/20 bg-white/[0.02] p-6 sm:p-10">
         <div className="flex items-center gap-2 font-mono text-xs text-white/70 uppercase">
           <ShieldCheck className="h-4 w-4 text-white" />
           Account Registration
         </div>
-        <h1 className="mt-3 text-2xl font-semibold tracking-tight text-white">Create your account</h1>
+        <h1 className="mt-3 text-2xl font-bold tracking-tight text-white">Create your account</h1>
         <p className="mt-2 text-sm text-white/70">
           We will send a 6-digit verification code to your email before activating your account.
         </p>
@@ -74,7 +74,7 @@ export default function RegisterPage() {
         {serverError && (
           <div
             role="alert"
-            className="mt-5 flex items-start gap-2.5 rounded-md border border-white bg-white/5 p-3.5 text-xs text-white"
+            className="mt-5 flex items-start gap-2.5 border border-white bg-white/10 p-3.5 text-xs text-white"
           >
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>{serverError}</span>
@@ -91,7 +91,7 @@ export default function RegisterPage() {
               type="text"
               autoComplete="name"
               {...register("name")}
-              className="mt-1.5 w-full rounded-md border border-white/25 bg-navy px-3.5 py-2.5 text-sm text-white focus:border-white"
+              className="mt-1.5 w-full border border-white/25 bg-navy px-3.5 py-2.5 text-sm text-white focus:border-white focus:outline-none"
             />
             {errors.name && <p className="mt-1 text-xs text-white/80">· {errors.name.message}</p>}
           </div>
@@ -105,7 +105,7 @@ export default function RegisterPage() {
               type="email"
               autoComplete="email"
               {...register("email")}
-              className="mt-1.5 w-full rounded-md border border-white/25 bg-navy px-3.5 py-2.5 text-sm text-white focus:border-white"
+              className="mt-1.5 w-full border border-white/25 bg-navy px-3.5 py-2.5 text-sm text-white focus:border-white focus:outline-none"
             />
             {errors.email && <p className="mt-1 text-xs text-white/80">· {errors.email.message}</p>}
           </div>
@@ -119,7 +119,7 @@ export default function RegisterPage() {
               type="password"
               autoComplete="new-password"
               {...register("password")}
-              className="mt-1.5 w-full rounded-md border border-white/25 bg-navy px-3.5 py-2.5 text-sm text-white focus:border-white"
+              className="mt-1.5 w-full border border-white/25 bg-navy px-3.5 py-2.5 text-sm text-white focus:border-white focus:outline-none"
             />
             {errors.password && <p className="mt-1 text-xs text-white/80">· {errors.password.message}</p>}
           </div>
@@ -133,7 +133,7 @@ export default function RegisterPage() {
               type="password"
               autoComplete="new-password"
               {...register("confirmPassword")}
-              className="mt-1.5 w-full rounded-md border border-white/25 bg-navy px-3.5 py-2.5 text-sm text-white focus:border-white"
+              className="mt-1.5 w-full border border-white/25 bg-navy px-3.5 py-2.5 text-sm text-white focus:border-white focus:outline-none"
             />
             {errors.confirmPassword && (
               <p className="mt-1 text-xs text-white/80">· {errors.confirmPassword.message}</p>
@@ -143,7 +143,7 @@ export default function RegisterPage() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="flex w-full items-center justify-center gap-2 rounded-md bg-white px-5 py-3 text-sm font-semibold text-navy transition hover:bg-white/90 disabled:opacity-50"
+            className="flex w-full items-center justify-center gap-2 bg-white px-5 py-3 text-xs font-bold uppercase tracking-wider text-navy transition hover:bg-white/90 disabled:opacity-50"
           >
             {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
             {isSubmitting ? "Creating account..." : "Register & Send OTP"}

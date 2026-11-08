@@ -3,8 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
-import { LayoutDashboard, LogOut, Menu, ShieldCheck, User as UserIcon, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowUpRight, LayoutDashboard, LogOut, Menu, User as UserIcon, X } from "lucide-react";
 import { useAuth } from "@/features/auth/AuthContext";
 
 const NAV_LINKS = [
@@ -21,6 +21,19 @@ export function Navbar() {
   const { user, loading, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [mobileOpen]);
+
   if (pathname?.startsWith("/admin")) {
     return null;
   }
@@ -31,31 +44,47 @@ export function Navbar() {
     router.push("/");
   };
 
+  const isLinkActive = (href: string) =>
+    href === "/" ? pathname === "/" : pathname === href || Boolean(pathname?.startsWith(`${href}/`));
+
   return (
-    <header className="sticky top-0 z-40 border-b border-white/15 bg-navy/95 backdrop-blur-md">
+    <header className="sticky top-0 z-40 border-b border-white/15 bg-navy/90 backdrop-blur-md">
       <div className="mx-auto flex h-20 max-w-6xl items-center justify-between px-6">
-        <Link href="/" className="flex items-center gap-3" aria-label="Dezaakir Home">
+        {/* Brand Identity */}
+        <Link
+          href="/"
+          className="group flex items-center gap-3.5 focus:outline-none"
+          aria-label="Dezaakir Home"
+        >
           <Image
             src="/logo.png"
             alt="Dezaakir Logo"
             width={40}
             height={40}
             priority
-            className="h-10 w-auto object-contain"
+            className="h-9 w-auto object-contain transition duration-200 group-hover:opacity-90"
           />
-          <span className="text-lg font-semibold tracking-tight text-white">Dezaakir</span>
+          <div className="flex flex-col">
+            <span className="text-base font-bold tracking-tight text-white">Dezaakir</span>
+            <span className="font-mono text-[10px] uppercase tracking-widest text-white/55">
+              Software & Technology
+            </span>
+          </div>
         </Link>
 
+        {/* Desktop Primary Navigation */}
         <nav className="hidden items-center gap-1 md:flex" aria-label="Primary navigation">
           {NAV_LINKS.map((item) => {
-            const active =
-              item.href === "/" ? pathname === "/" : pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const active = isLinkActive(item.href);
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`rounded-md px-3.5 py-2 text-sm font-medium transition ${
-                  active ? "bg-white text-navy" : "text-white/75 hover:bg-white/10 hover:text-white"
+                aria-current={active ? "page" : undefined}
+                className={`relative px-4 py-2 text-sm font-medium transition duration-150 ${
+                  active
+                    ? "bg-white font-semibold text-navy"
+                    : "text-white/75 hover:bg-white/[0.06] hover:text-white"
                 }`}
               >
                 {item.label}
@@ -64,126 +93,140 @@ export function Navbar() {
           })}
         </nav>
 
-        <div className="hidden items-center gap-3 md:flex">
+        {/* Desktop Authentication & Action Controls */}
+        <div className="hidden items-center gap-2.5 md:flex">
           {!loading && user ? (
             <>
+              <Link
+                href={user.role === "ADMIN" ? "/admin" : "/account"}
+                className="inline-flex items-center gap-2 bg-white px-4 py-2 text-xs font-bold uppercase tracking-wider text-navy transition hover:bg-white/90"
+              >
+                <LayoutDashboard className="h-3.5 w-3.5" />
+                Dashboard
+              </Link>
               {user.role === "ADMIN" && (
                 <Link
-                  href="/admin"
-                  className="inline-flex items-center gap-2 rounded-md border border-white/25 bg-white/5 px-3.5 py-2 text-xs font-medium tracking-wide text-white transition hover:bg-white hover:text-navy"
+                  href="/account"
+                  className="inline-flex items-center gap-1.5 border border-white/20 px-3 py-2 text-xs font-medium text-white/85 transition hover:border-white hover:text-white"
+                  title="Account Settings"
                 >
-                  <LayoutDashboard className="h-3.5 w-3.5" />
-                  Admin
+                  <UserIcon className="h-3.5 w-3.5" />
+                  <span>{user.name.split(" ")[0]}</span>
                 </Link>
               )}
-              <Link
-                href="/account"
-                className="inline-flex items-center gap-2 rounded-md border border-white/20 px-3.5 py-2 text-xs font-medium text-white/90 transition hover:bg-white/10"
-              >
-                <UserIcon className="h-3.5 w-3.5" />
-                {user.name.split(" ")[0]}
-              </Link>
               <button
                 type="button"
                 onClick={handleLogout}
-                className="inline-flex items-center gap-1.5 rounded-md border border-white/20 px-3 py-2 text-xs font-medium text-white/75 transition hover:bg-white hover:text-navy"
+                className="inline-flex items-center gap-1.5 border border-white/20 px-3 py-2 text-xs font-medium text-white/75 transition hover:border-white hover:text-white"
                 aria-label="Sign out"
               >
                 <LogOut className="h-3.5 w-3.5" />
-                Sign out
+                <span>Sign Out</span>
               </button>
             </>
           ) : (
             <>
               <Link
                 href="/login"
-                className="rounded-md px-3.5 py-2 text-sm font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
+                className="border border-white/20 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-white/85 transition hover:border-white hover:text-white"
               >
-                Sign in
+                Login
               </Link>
               <Link
-                href="/register"
-                className="inline-flex items-center gap-1.5 rounded-md bg-white px-4 py-2 text-sm font-semibold text-navy transition hover:bg-white/90"
+                href="/contact"
+                className="inline-flex items-center gap-1.5 bg-white px-4 py-2 text-xs font-bold uppercase tracking-wider text-navy transition hover:bg-white/90"
               >
-                <ShieldCheck className="h-4 w-4" />
-                Register
+                <span>Start a Project</span>
+                <ArrowUpRight className="h-3.5 w-3.5" />
               </Link>
             </>
           )}
         </div>
 
+        {/* Mobile Menu Trigger */}
         <button
           type="button"
           onClick={() => setMobileOpen((prev) => !prev)}
-          className="inline-flex items-center justify-center rounded-md border border-white/20 p-2 text-white md:hidden"
-          aria-label="Toggle navigation menu"
+          className="inline-flex items-center justify-center border border-white/25 p-2.5 text-white transition hover:border-white md:hidden"
+          aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
           aria-expanded={mobileOpen}
+          aria-controls="mobile-primary-nav"
         >
           {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
       </div>
 
+      {/* Mobile Navigation Drawer */}
       {mobileOpen && (
-        <div className="border-t border-white/15 bg-navy px-6 py-5 md:hidden">
-          <nav className="flex flex-col gap-2" aria-label="Mobile navigation">
+        <div
+          id="mobile-primary-nav"
+          className="border-t border-white/15 bg-navy px-6 py-6 md:hidden"
+        >
+          <nav className="flex flex-col gap-1.5" aria-label="Mobile navigation">
             {NAV_LINKS.map((item) => {
-              const active =
-                item.href === "/" ? pathname === "/" : pathname === item.href || pathname.startsWith(`${item.href}/`);
+              const active = isLinkActive(item.href);
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   onClick={() => setMobileOpen(false)}
-                  className={`rounded-md px-3.5 py-2.5 text-sm font-medium transition ${
-                    active ? "bg-white text-navy" : "text-white/80 hover:bg-white/10"
+                  aria-current={active ? "page" : undefined}
+                  className={`flex items-center justify-between px-4 py-3 text-sm font-medium transition ${
+                    active
+                      ? "bg-white font-semibold text-navy"
+                      : "border border-transparent text-white/80 hover:border-white/15 hover:bg-white/5 hover:text-white"
                   }`}
                 >
-                  {item.label}
+                  <span>{item.label}</span>
+                  <span className="font-mono text-[10px] uppercase opacity-60">→</span>
                 </Link>
               );
             })}
-            <div className="my-2 h-px bg-white/15" />
+
+            <div className="my-3 h-px bg-white/15" />
+
             {user ? (
-              <>
+              <div className="flex flex-col gap-2">
+                <Link
+                  href={user.role === "ADMIN" ? "/admin" : "/account"}
+                  onClick={() => setMobileOpen(false)}
+                  className="flex items-center justify-center gap-2 bg-white px-4 py-3 text-xs font-bold uppercase tracking-wider text-navy"
+                >
+                  <LayoutDashboard className="h-4 w-4" />
+                  {user.role === "ADMIN" ? "Admin Dashboard" : "Account Dashboard"}
+                </Link>
                 {user.role === "ADMIN" && (
                   <Link
-                    href="/admin"
+                    href="/account"
                     onClick={() => setMobileOpen(false)}
-                    className="rounded-md border border-white/20 px-3.5 py-2.5 text-sm font-medium text-white"
+                    className="border border-white/20 px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wider text-white"
                   >
-                    Admin Dashboard
+                    Account Profile ({user.name})
                   </Link>
                 )}
-                <Link
-                  href="/account"
-                  onClick={() => setMobileOpen(false)}
-                  className="rounded-md border border-white/20 px-3.5 py-2.5 text-sm font-medium text-white"
-                >
-                  Account ({user.name})
-                </Link>
                 <button
                   type="button"
                   onClick={handleLogout}
-                  className="rounded-md bg-white px-3.5 py-2.5 text-left text-sm font-semibold text-navy"
+                  className="border border-white/20 px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wider text-white/80 hover:border-white hover:text-white"
                 >
-                  Sign out
+                  Sign Out
                 </button>
-              </>
+              </div>
             ) : (
-              <div className="flex flex-col gap-2">
+              <div className="grid grid-cols-2 gap-2.5">
                 <Link
                   href="/login"
                   onClick={() => setMobileOpen(false)}
-                  className="rounded-md border border-white/20 px-3.5 py-2.5 text-center text-sm font-medium text-white"
+                  className="border border-white/25 px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-white"
                 >
-                  Sign in
+                  Login
                 </Link>
                 <Link
-                  href="/register"
+                  href="/contact"
                   onClick={() => setMobileOpen(false)}
-                  className="rounded-md bg-white px-3.5 py-2.5 text-center text-sm font-semibold text-navy"
+                  className="bg-white px-4 py-3 text-center text-xs font-bold uppercase tracking-wider text-navy"
                 >
-                  Create Account
+                  Contact
                 </Link>
               </div>
             )}
