@@ -105,13 +105,29 @@ To keep `SameSite=Lax` cookies first-party, serve the API on a **subdomain of th
 
 There are only two colors: **Navy `#0B1628`** and **White `#FFFFFF`**. Tailwind's default palette is removed in `globals.css` (`--color-*: initial`), so no other color class exists. Hierarchy comes from opacity (`white/5 … white/90`, `navy/80`). Typography uses Geist Sans and Geist Mono, bundled locally with no external font requests.
 
-## 8. Phase roadmap
+## 8. Database Architecture (Phase 2)
+
+All 12 Mongoose models live in `backend/src/models/`:
+1. **User**: `name`, normalized `email` (unique), `passwordHash` (`select: false`), `role` (`USER` | `ADMIN`), `emailVerified`, `status` (`PENDING` | `ACTIVE` | `SUSPENDED`), lockout counters, encrypted TOTP `mfa` subdocument, and a 7-day partial TTL index on unverified `PENDING` accounts.
+2. **Session**: server-side sessions storing only `tokenHash` and `csrfTokenHash` (`select: false`), `mfaVerified`, `ip`, `userAgent`, `lastSeenAt`, `expiresAt` (TTL index), `revokedAt`.
+3. **EmailVerification**: one active OTP per user (`unique` index on `user`), storing only `codeHash` (`select: false`), `attempts`, `lastSentAt`, `expiresAt` (10-minute TTL index).
+4. **PasswordResetToken**: single-use reset tokens storing only `tokenHash` (`select: false`), `expiresAt` (30-minute TTL index), `usedAt`.
+5. **Blog**: `title`, `slug` (unique), `excerpt`, sanitized `content`, `contentText` (weighted full-text index), `coverImage`, `author`, `category`, `tags`, `status` (`DRAFT` | `SCHEDULED` | `PUBLISHED`), `featured`, `readingTime`, SEO fields, `publishedAt`, and `Blog.publicFilter()`.
+6. **Project**: `title`, `slug` (unique), `summary`, sanitized `description`, `coverImage`, `images`, `technologies`, HTTPS-validated `githubUrl`/`liveUrl`, `category`, `featured`, `status` (`DRAFT` | `PUBLISHED`), `order`, SEO fields, and `Project.publicFilter()`.
+7. **Category**: `name`, `slug`, `type` (`BLOG` | `PROJECT`), compound unique index `(type, slug)`.
+8. **Tag**: `name`, `slug` (unique).
+9. **ContactMessage**: `name`, `email`, CR/LF-free `subject`, `message`, `status` (`NEW` | `READ` | `ARCHIVED`), `ipHash` (`select: false`).
+10. **Media**: Cloudinary asset metadata (`publicId` unique, `url`, `format`, `bytes`, dimensions, `alt`, `folder`, `uploadedBy`).
+11. **AuditLog**: append-only security/admin event log (updates blocked by pre-hooks) with a 365-day TTL index.
+12. **SiteSettings**: race-safe singleton (`key = "site"`) storing biography, skills, experience, education, social links, CV URL, and SEO defaults.
+
+## 9. Phase roadmap
 
 | # | Phase | Status |
 |---|---|---|
 | 1 | Architecture & project setup | ✅ Complete |
-| 2 | MongoDB models & connection | ⏳ Next |
-| 3 | Authentication & Gmail OTP | — |
+| 2 | MongoDB models & connection | ✅ Complete |
+| 3 | Authentication & Gmail OTP | ⏳ Next |
 | 4 | Security middleware & API protection | — |
 | 5 | Public frontend | — |
 | 6 | Blog management | — |

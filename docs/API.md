@@ -16,6 +16,9 @@ Standard error codes: `BAD_REQUEST`, `VALIDATION_ERROR`, `INVALID_JSON`, `UNAUTH
 ### `GET /api/health`
 Liveness probe. Returns `{ "success": true, "data": { "status": "ok" } }` with `Cache-Control: no-store`.
 
+### `GET /api/health/ready`
+Readiness probe. Returns `200 { "success": true, "data": { "status": "ready" } }` when the MongoDB connection is active, or `503 NOT_READY` otherwise.
+
 ## Planned (later phases)
 
 | Group | Endpoints | Phase |

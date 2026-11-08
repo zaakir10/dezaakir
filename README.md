@@ -45,6 +45,7 @@ bun run dev:frontend   # http://localhost:3000
 | tailwindcss | 4.3.5 |
 | framer-motion | 14.10.1 |
 | express | 5.3.0 |
+| mongoose | 9.12.0 |
 | helmet | 8.3.0 |
 | zod | 4.6.7 |
 | pino | 10.4.0 |

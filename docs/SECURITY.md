@@ -27,7 +27,10 @@
 | API | Safe error handler (no stack/driver leakage) and consistent envelope | 1 | ✅ |
 | API | Request correlation ids | 1 | ✅ |
 | Config | Fail-fast env validation; production requires HTTPS and real secrets | 1 | ✅ |
-| Injection | Strict Zod schemas, ObjectId validation, `sanitizeFilter`, `strictQuery` | 2/4 | ⏳ |
+| Database | Production TLS enforcement (`assertSecureUri`), `strictQuery: true`, `strict: "throw"`, `sanitizeFilter: true` | 2 | ✅ |
+| Database | Sensitive fields (`passwordHash`, `tokenHash`, `codeHash`, `mfa.secretEncrypted`) hidden via `select: false` and `toJSON` transforms | 2 | ✅ |
+| Database | Automatic TTL cleanup for expired sessions, OTPs, password reset tokens, unverified accounts, and audit logs | 2 | ✅ |
+| Injection | ObjectId validation (`toObjectId`), regex escaping (`escapeRegex`), `sanitizeFilter`, `strictQuery` | 2 | ✅ |
 | Auth | Argon2id, server-side sessions, OTP, password reset | 3 | ⏳ |
 | Auth | Admin TOTP MFA | 3 | ⏳ |
 | CSRF | Synchronizer token + Origin check | 4 | ⏳ |
