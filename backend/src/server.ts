@@ -1,6 +1,7 @@
 import { createApp } from "./app.js";
 import { env } from "./config/env.js";
 import { connectDatabase, disconnectDatabase } from "./config/database.js";
+import { verifySmtpConnection } from "./services/email.service.js";
 import { logger } from "./utils/logger.js";
 
 async function start() {
@@ -11,6 +12,8 @@ async function start() {
     logger.fatal({ errName: err instanceof Error ? err.name : "Unknown" }, "Could not connect to MongoDB");
     process.exit(1);
   }
+
+  await verifySmtpConnection();
 
   const app = createApp();
   const server = app.listen(env.PORT, () => {

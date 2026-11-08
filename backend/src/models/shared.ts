@@ -1,4 +1,9 @@
-import { Schema, type SchemaOptions } from "mongoose";
+import mongoose, { Schema, type SchemaOptions } from "mongoose";
+
+mongoose.set("strictQuery", true);
+mongoose.set("strict", "throw");
+mongoose.set("sanitizeFilter", true);
+mongoose.set("translateAliases", false);
 
 /**
  * Shared JSON serialisation: exposes `id` instead of `_id`, removes `__v`, and
@@ -23,6 +28,8 @@ export function baseOptions<T>(extra: SchemaOptions<T> = {}, hidden: readonly st
   };
 
   return {
+    strict: "throw",
+    strictQuery: true,
     timestamps: true,
     id: false,
     toJSON: { virtuals: false, transform },

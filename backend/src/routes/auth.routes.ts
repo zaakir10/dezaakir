@@ -1,0 +1,55 @@
+import { Router } from "express";
+import {
+  changePasswordHandler,
+  forgotPasswordHandler,
+  listSessionsHandler,
+  loginHandler,
+  logoutAllHandler,
+  logoutHandler,
+  meHandler,
+  mfaEnableHandler,
+  mfaSetupHandler,
+  registerHandler,
+  resendVerificationHandler,
+  resetPasswordHandler,
+  revokeSessionHandler,
+  updateProfileHandler,
+  verifyEmailHandler,
+} from "../controllers/auth.controller.js";
+import { requireAuth } from "../middleware/auth.js";
+import { validate } from "../middleware/validate.js";
+import {
+  ChangePasswordSchema,
+  ForgotPasswordSchema,
+  LoginSchema,
+  MfaVerifySchema,
+  RegisterSchema,
+  ResendVerificationSchema,
+  ResetPasswordSchema,
+  SessionIdParamSchema,
+  UpdateProfileSchema,
+  VerifyEmailSchema,
+} from "../validators/auth.validator.js";
+
+export const authRouter = Router();
+
+// Public authentication & email verification routes
+authRouter.post("/register", validate({ body: RegisterSchema }), registerHandler);
+authRouter.post("/verify-email", validate({ body: VerifyEmailSchema }), verifyEmailHandler);
+authRouter.post("/resend-verification", validate({ body: ResendVerificationSchema }), resendVerificationHandler);
+authRouter.post("/login", validate({ body: LoginSchema }), loginHandler);
+authRouter.post("/logout", logoutHandler);
+authRouter.post("/forgot-password", validate({ body: ForgotPasswordSchema }), forgotPasswordHandler);
+authRouter.post("/reset-password", validate({ body: ResetPasswordSchema }), resetPasswordHandler);
+
+// Authenticated account & session management routes
+authRouter.get("/me", requireAuth, meHandler);
+authRouter.patch("/me", requireAuth, validate({ body: UpdateProfileSchema }), updateProfileHandler);
+authRouter.post("/change-password", requireAuth, validate({ body: ChangePasswordSchema }), changePasswordHandler);
+authRouter.post("/logout-all", requireAuth, logoutAllHandler);
+authRouter.get("/sessions", requireAuth, listSessionsHandler);
+authRouter.delete("/sessions/:id", requireAuth, validate({ params: SessionIdParamSchema }), revokeSessionHandler);
+
+// TOTP Multi-Factor Authentication enrollment routes
+authRouter.post("/mfa/setup", requireAuth, mfaSetupHandler);
+authRouter.post("/mfa/enable", requireAuth, validate({ body: MfaVerifySchema }), mfaEnableHandler);

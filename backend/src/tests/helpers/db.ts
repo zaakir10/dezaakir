@@ -46,7 +46,7 @@ export async function startTestDatabase(): Promise<void> {
     binary: { version: "7.0.14", ...(systemBinary ? { systemBinary } : {}) },
   });
   await connectDatabase(server.getUri("dezaakir_test"));
-  await Promise.all(allModels.map((m) => m.init()));
+  await Promise.all(allModels.map((m) => m.createIndexes()));
 }
 
 export async function clearTestDatabase(): Promise<void> {

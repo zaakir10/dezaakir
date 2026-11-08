@@ -31,8 +31,10 @@
 | Database | Sensitive fields (`passwordHash`, `tokenHash`, `codeHash`, `mfa.secretEncrypted`) hidden via `select: false` and `toJSON` transforms | 2 | ✅ |
 | Database | Automatic TTL cleanup for expired sessions, OTPs, password reset tokens, unverified accounts, and audit logs | 2 | ✅ |
 | Injection | ObjectId validation (`toObjectId`), regex escaping (`escapeRegex`), `sanitizeFilter`, `strictQuery` | 2 | ✅ |
-| Auth | Argon2id, server-side sessions, OTP, password reset | 3 | ⏳ |
-| Auth | Admin TOTP MFA | 3 | ⏳ |
+| Auth | Argon2id (`Bun.password`), server-side sessions (`HttpOnly`, `SameSite=Lax`, `Secure` in prod), session regeneration & revocation | 3 | ✅ |
+| Auth | 6-digit CSPRNG Email OTP (keyed HMAC-SHA256, 10m expiry, 60s resend cooldown, 5 attempt limit, single-use) via Gmail SMTP TLS | 3 | ✅ |
+| Auth | Single-use hashed password reset tokens (30m expiry) + automatic revocation of all existing sessions | 3 | ✅ |
+| Auth | Admin TOTP MFA (RFC 6238, AES-256-GCM encrypted secret at rest, 8 single-use hashed recovery codes) + CLI `create-admin` bootstrap | 3 | ✅ |
 | CSRF | Synchronizer token + Origin check | 4 | ⏳ |
 | Rate limits | Login, OTP, reset, contact | 4 | ⏳ |
 | XSS | Rich text sanitized on write (allow-list) and on render | 6 | ⏳ |
