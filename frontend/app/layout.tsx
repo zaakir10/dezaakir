@@ -34,8 +34,8 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
-      <body className="flex min-h-dvh flex-col bg-navy text-white">
+    <html lang="en" suppressHydrationWarning className={`${GeistSans.variable} ${GeistMono.variable}`}>
+      <body suppressHydrationWarning className="flex min-h-dvh flex-col bg-navy text-white">
         <AuthProvider>
           <Navbar />
           <div className="flex-1">{children}</div>
