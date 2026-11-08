@@ -7,6 +7,21 @@ import { hashToken, safeEqual } from "../utils/crypto.js";
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const ALLOWED_ORIGIN = new URL(env.FRONTEND_URL).origin;
 
+/**
+ * Public unauthenticated entry paths that do not rely on an existing session cookie
+ * (e.g. logging in with credentials when a stale session cookie is still present).
+ * These still enforce strict Origin/Referer validation above.
+ */
+const CREDENTIAL_ENTRY_PATHS = new Set([
+  "/api/auth/login",
+  "/api/auth/register",
+  "/api/auth/verify-email",
+  "/api/auth/resend-verification",
+  "/api/auth/forgot-password",
+  "/api/auth/reset-password",
+  "/api/contact",
+]);
+
 function extractOrigin(headerValue: string | undefined): string | null {
   if (!headerValue) return null;
   try {
@@ -47,7 +62,8 @@ export const csrfProtection: RequestHandler = async (req, _res, next) => {
     }
 
     // Authenticated session requests must present a valid synchronizer CSRF token
-    if (req.session) {
+    const requestPath = req.path.replace(/\/+$/, "") || "/";
+    if (req.session && !CREDENTIAL_ENTRY_PATHS.has(requestPath)) {
       const tokenHeader = req.get("x-csrf-token");
       if (!tokenHeader || tokenHeader.length < 16 || tokenHeader.length > 128) {
         await recordAudit({

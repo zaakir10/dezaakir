@@ -26,10 +26,33 @@ let currentCsrfToken: string | null = null;
 
 export function setClientCsrfToken(token: string | null): void {
   currentCsrfToken = token;
+  if (typeof window !== "undefined") {
+    try {
+      if (token) {
+        window.sessionStorage.setItem("dezaakir_csrf", token);
+      } else {
+        window.sessionStorage.removeItem("dezaakir_csrf");
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }
 }
 
 export function getClientCsrfToken(): string | null {
-  return currentCsrfToken;
+  if (currentCsrfToken) return currentCsrfToken;
+  if (typeof window !== "undefined") {
+    try {
+      const stored = window.sessionStorage.getItem("dezaakir_csrf");
+      if (stored) {
+        currentCsrfToken = stored;
+        return stored;
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return null;
 }
 
 export interface ApiSuccess<T> {
@@ -39,9 +62,27 @@ export interface ApiSuccess<T> {
 
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
+async function refreshCsrfTokenFromSession(): Promise<string | null> {
+  try {
+    const res = await fetch(`${siteConfig.apiUrl}/api/auth/me`, {
+      method: "GET",
+      credentials: "include",
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { data?: { csrfToken?: string } };
+    const token = json?.data?.csrfToken ?? null;
+    if (token) {
+      setClientCsrfToken(token);
+    }
+    return token;
+  } catch {
+    return null;
+  }
+}
+
 export async function apiRequest<T>(
   path: string,
-  options: RequestInit & { csrfToken?: string | null } = {},
+  options: RequestInit & { csrfToken?: string | null; _retriedCsrf?: boolean } = {},
 ): Promise<ApiSuccess<T>> {
   const method = (options.method ?? "GET").toUpperCase();
   const headers = new Headers(options.headers);
@@ -50,7 +91,10 @@ export async function apiRequest<T>(
     headers.set("Content-Type", "application/json");
   }
 
-  const token = options.csrfToken ?? currentCsrfToken;
+  let token = options.csrfToken ?? getClientCsrfToken();
+  if (MUTATING_METHODS.has(method) && !token && !path.startsWith("/api/auth/login")) {
+    token = await refreshCsrfTokenFromSession();
+  }
   if (MUTATING_METHODS.has(method) && token) {
     headers.set("X-CSRF-Token", token);
   }
@@ -76,6 +120,19 @@ export async function apiRequest<T>(
     meta?: PaginationMeta;
     error?: { code?: string; message?: string; details?: unknown };
   } | null;
+
+  // Automatically recover once if the in-memory CSRF token is out of sync with the session cookie
+  if (
+    res.status === 403 &&
+    body?.error?.code === "CSRF_TOKEN_INVALID" &&
+    MUTATING_METHODS.has(method) &&
+    !options._retriedCsrf
+  ) {
+    const freshToken = await refreshCsrfTokenFromSession();
+    if (freshToken) {
+      return apiRequest<T>(path, { ...options, csrfToken: freshToken, _retriedCsrf: true });
+    }
+  }
 
   if (!res.ok || !body?.success) {
     const detailsList = Array.isArray(body?.error?.details)
