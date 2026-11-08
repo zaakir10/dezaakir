@@ -40,7 +40,7 @@
 | Injection | Recursive NoSQL operator & prototype pollution guard (`sanitizeInput`) with suspicious request audit logging | 4 | ✅ |
 | XSS | Allow-list rich HTML sanitizer (`sanitizeRichHtml`) & plain-text entity escaping (`sanitizePlainText`) | 4 | ✅ |
 | Contact | Honeypot spam protection, CR/LF header-injection prevention, IP hashing, and Admin MFA-gated review | 4 | ✅ |
-| Uploads | Magic-byte check, size limits, no SVG, signed Cloudinary uploads | 7 | ⏳ |
+| Uploads | Magic-byte signature verification (PNG/JPEG/GIF/WebP/AVIF), 5MB limit, SVG/executable/polyglot rejection, MIME match check, signed Cloudinary uploads, in-use reference protection | 7 | ✅ |
 | Logging | Auth events, admin audit log, permission denials | 3–8 | ⏳ |
 | Backups | Atlas backups + tested `mongodump`/`mongorestore` procedure | 10 | ⏳ |
 

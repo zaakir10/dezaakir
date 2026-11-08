@@ -72,11 +72,24 @@ Readiness probe. Returns `200 { "success": true, "data": { "status": "ready" } }
 | `POST /api/tags` | Admin + MFA + CSRF | Creates a blog tag. |
 | `DELETE /api/tags/:id` | Admin + MFA + CSRF | Deletes a blog tag and pulls it from affected posts. |
 
+### Projects & Media (`/api/projects`, `/api/admin/projects`, `/api/admin/media`)
+
+| Method & Path | Auth | Description |
+|---|---|---|
+| `GET /api/projects` | Public | Lists published projects (`Project.publicFilter()`) with pagination, category/technology/featured filters, and escaped regex search. Never exposes drafts. |
+| `GET /api/projects/:slug` | Public | Returns a single published project by slug. Drafts return `404`. |
+| `POST /api/projects` | Admin + MFA + CSRF | Creates a project, sanitizes `description` HTML (`sanitizeRichHtml`), validates HTTPS GitHub/live URLs, and ensures a unique slug. |
+| `PUT /api/projects/:id` | Admin + MFA + CSRF | Updates a project (draft or published) and records an admin audit log. |
+| `DELETE /api/projects/:id` | Admin + MFA + CSRF | Deletes a project and records an admin audit log. |
+| `GET /api/admin/projects` | Admin + MFA | Lists all projects (including `DRAFT`) for the Admin Dashboard. |
+| `GET /api/admin/projects/:id` | Admin + MFA | Fetches any project by id for editing in the Admin Dashboard. |
+| `GET /api/admin/media` | Admin + MFA | Lists registered Cloudinary media assets with pagination and folder filter. |
+| `POST /api/admin/media/sign` | Admin + MFA + CSRF | Generates signed Cloudinary upload parameters (`signature`, `timestamp`, `publicId`, `folder`). |
+| `POST /api/admin/media/upload` | Admin + MFA + CSRF | Verifies magic-byte image signatures (PNG, JPEG, GIF, WebP, AVIF), blocks SVGs/executables/polyglots/MIME mismatches, uploads to Cloudinary, and registers a `Media` document. |
+| `DELETE /api/admin/media/:id` | Admin + MFA + CSRF | Deletes an unused media asset (`409 CONFLICT` if referenced by a blog or project). |
+
 ## Planned (later phases)
 
 | Group | Endpoints | Phase |
 |---|---|---|
-| Blogs | `GET /api/blogs`, `GET /api/blogs/:slug`, `POST /api/blogs`, `PUT /api/blogs/:id`, `DELETE /api/blogs/:id` | 6 |
-| Projects | `GET /api/projects`, `GET /api/projects/:slug`, `POST /api/projects`, `PUT /api/projects/:id`, `DELETE /api/projects/:id` | 7 |
-| Admin users | `GET /api/admin/users`, `GET /api/admin/users/:id`, `PATCH /api/admin/users/:id/status` | 8 |
-| Contact | `POST /api/contact`, `GET /api/admin/messages`, `PATCH /api/admin/messages/:id` | 4/8 |
+| Admin users & overview | `GET /api/admin/overview`, `GET /api/admin/users`, `GET /api/admin/users/:id`, `PATCH /api/admin/users/:id/status`, `GET /api/admin/audit-logs` | 8 |
