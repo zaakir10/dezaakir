@@ -47,6 +47,13 @@ Readiness probe. Returns `200 { "success": true, "data": { "status": "ready" } }
 | `GET /api/admin/messages` | Admin + MFA | Lists contact messages with pagination (`page`, `limit`) and optional `status` (`NEW` \| `READ` \| `ARCHIVED`) filter. |
 | `PATCH /api/admin/messages/:id` | Admin + MFA + CSRF | Updates a contact message's status (`NEW` \| `READ` \| `ARCHIVED`) and records an admin audit log. |
 
+### Site Settings (`/api/settings` & `/api/admin/settings`)
+
+| Method & Path | Auth | Description |
+|---|---|---|
+| `GET /api/settings` | Public | Returns the public site settings singleton (biography, skills, experience, education, social links, CV URL, SEO defaults). |
+| `PUT /api/admin/settings` | Admin + MFA + CSRF | Updates the site settings singleton and records an admin audit log. |
+
 ## Planned (later phases)
 
 | Group | Endpoints | Phase |

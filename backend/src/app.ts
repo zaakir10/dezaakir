@@ -10,6 +10,7 @@ import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 import { healthRouter } from "./routes/health.routes.js";
 import { authRouter } from "./routes/auth.routes.js";
 import { adminMessagesRouter, contactRouter } from "./routes/contact.routes.js";
+import { adminSettingsRouter, settingsRouter } from "./routes/settings.routes.js";
 import { sendError } from "./utils/apiResponse.js";
 
 const ALLOWED_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"];
@@ -76,7 +77,9 @@ export function createApp() {
   app.use("/api/health", healthRouter);
   app.use("/api/auth", authRouter);
   app.use("/api/contact", contactRouter);
+  app.use("/api/settings", settingsRouter);
   app.use("/api/admin/messages", adminMessagesRouter);
+  app.use("/api/admin/settings", adminSettingsRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
