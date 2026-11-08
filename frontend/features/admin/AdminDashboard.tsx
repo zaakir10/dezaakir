@@ -677,7 +677,7 @@ export function AdminDashboard() {
       <div className="mb-8 flex flex-col justify-between gap-4 border-b border-white/15 pb-6 sm:flex-row sm:items-center">
         <div>
           <span className="inline-flex items-center gap-1.5 border border-white/25 bg-white/5 px-2.5 py-1 font-mono text-xs uppercase tracking-widest text-white/80">
-            <Lock className="h-3 w-3" /> Administrator · MFA Verified
+            <Lock className="h-3 w-3" /> Administrator · Verified Session
           </span>
           <h1 className="mt-2 text-2xl font-bold tracking-tight text-white sm:text-3xl">
             Dezaakir Control Center

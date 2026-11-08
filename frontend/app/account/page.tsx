@@ -10,7 +10,6 @@ import {
   Laptop,
   Loader2,
   LogOut,
-  ShieldCheck,
   Trash2,
   User as UserIcon,
 } from "lucide-react";
@@ -32,13 +31,6 @@ export default function AccountPage() {
 
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
-
-  // MFA Setup State
-  const [mfaSecret, setMfaSecret] = useState<string | null>(null);
-  const [mfaUri, setMfaUri] = useState<string | null>(null);
-  const [mfaCode, setMfaCode] = useState("");
-  const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
-  const [mfaBusy, setMfaBusy] = useState(false);
 
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -140,53 +132,6 @@ export default function AccountPage() {
         type: "error",
         text: err instanceof ApiClientError ? err.message : "Failed to sign out all sessions.",
       });
-    }
-  };
-
-  const handleStartMfaSetup = async () => {
-    setFeedback(null);
-    setMfaBusy(true);
-    try {
-      const { data } = await apiRequest<{ secret: string; otpauthUri: string }>("/api/auth/mfa/setup", {
-        method: "POST",
-      });
-      setMfaSecret(data.secret);
-      setMfaUri(data.otpauthUri);
-    } catch (err) {
-      setFeedback({
-        type: "error",
-        text: err instanceof ApiClientError ? err.message : "Unable to start MFA setup.",
-      });
-    } finally {
-      setMfaBusy(false);
-    }
-  };
-
-  const handleEnableMfa = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setFeedback(null);
-    setMfaBusy(true);
-    try {
-      const { data } = await apiRequest<{ recoveryCodes: string[] }>("/api/auth/mfa/enable", {
-        method: "POST",
-        body: JSON.stringify({ code: mfaCode.trim() }),
-      });
-      setRecoveryCodes(data.recoveryCodes);
-      setMfaSecret(null);
-      setMfaUri(null);
-      setMfaCode("");
-      await refreshAuth();
-      setFeedback({
-        type: "success",
-        text: "Multi-factor authentication enabled. Save your recovery codes offline.",
-      });
-    } catch (err) {
-      setFeedback({
-        type: "error",
-        text: err instanceof ApiClientError ? err.message : "Invalid authenticator code.",
-      });
-    } finally {
-      setMfaBusy(false);
     }
   };
 
@@ -334,80 +279,6 @@ export default function AccountPage() {
           </form>
         </section>
       </div>
-
-      {/* Multi-Factor Authentication (TOTP) */}
-      <section className="mt-8 rounded-xl border border-white/20 bg-white/[0.03] p-6">
-        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-          <div>
-            <div className="flex items-center gap-2 font-mono text-xs font-semibold text-white uppercase">
-              <ShieldCheck className="h-4 w-4" />
-              Two-Factor Authentication (TOTP)
-            </div>
-            <p className="mt-1.5 text-xs text-white/70">
-              {user.mfa?.enabled
-                ? "Authenticator app (TOTP) is active on your account."
-                : "Protect your account with an RFC 6238 authenticator app (required for Administrators)."}
-            </p>
-          </div>
-          {!user.mfa?.enabled && !mfaSecret && (
-            <button
-              type="button"
-              onClick={handleStartMfaSetup}
-              disabled={mfaBusy}
-              className="rounded-md bg-white px-4 py-2 text-xs font-semibold text-navy"
-            >
-              Configure TOTP MFA
-            </button>
-          )}
-        </div>
-
-        {mfaSecret && (
-          <form onSubmit={handleEnableMfa} className="mt-6 space-y-4 border-t border-white/15 pt-5">
-            <p className="text-xs text-white/80">
-              Add this Base32 secret key to your authenticator app (Google Authenticator, 1Password, Authy), then enter
-              the 6-digit code below:
-            </p>
-            <div className="rounded border border-white/25 bg-navy p-3 font-mono text-xs break-all text-white">
-              Secret: <strong>{mfaSecret}</strong>
-              {mfaUri && <div className="mt-1 text-[11px] text-white/60">{mfaUri}</div>}
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={6}
-                placeholder="6-digit code"
-                value={mfaCode}
-                onChange={(e) => setMfaCode(e.target.value)}
-                required
-                className="rounded-md border border-white/25 bg-navy px-3.5 py-2 font-mono text-sm text-white"
-              />
-              <button
-                type="submit"
-                disabled={mfaBusy}
-                className="rounded-md bg-white px-4 py-2 text-xs font-semibold text-navy"
-              >
-                Verify & Enable MFA
-              </button>
-            </div>
-          </form>
-        )}
-
-        {recoveryCodes && (
-          <div className="mt-6 rounded-lg border border-white bg-navy p-4">
-            <p className="font-mono text-xs font-semibold text-white uppercase">
-              Single-Use Recovery Codes (Save Offline Now)
-            </p>
-            <div className="mt-3 grid grid-cols-2 gap-2 font-mono text-xs text-white sm:grid-cols-4">
-              {recoveryCodes.map((c) => (
-                <span key={c} className="rounded border border-white/20 bg-white/5 px-2.5 py-1.5 text-center">
-                  {c}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-      </section>
 
       {/* Active Sessions */}
       <section className="mt-8 rounded-xl border border-white/20 bg-white/[0.03] p-6">

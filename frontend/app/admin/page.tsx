@@ -12,7 +12,7 @@ export default function AdminPage() {
     return (
       <div className="mx-auto flex min-h-[60vh] max-w-4xl items-center justify-center px-4">
         <div className="border border-white/15 bg-white/[0.02] px-6 py-4 font-mono text-xs uppercase tracking-widest text-white/80">
-          Verifying administrator session & MFA status...
+          Verifying administrator session...
         </div>
       </div>
     );
@@ -25,8 +25,7 @@ export default function AdminPage() {
           <ShieldAlert className="mx-auto h-10 w-10 text-white" />
           <h1 className="mt-4 text-xl font-bold text-white">Administrator Access Required</h1>
           <p className="mt-2 text-sm text-white/70">
-            This control center is restricted to authenticated Dezaakir administrators with active
-            TOTP multi-factor verification.
+            This control center is restricted to authenticated Dezaakir administrators.
           </p>
           <div className="mt-6 flex justify-center gap-3">
             <Link

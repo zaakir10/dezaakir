@@ -306,56 +306,19 @@ describe("Phase 3: Login, Sessions, Password Reset & Admin MFA", () => {
     expect(newLogin.status).toBe(200);
   });
 
-  it("enforces TOTP MFA and single-use recovery codes for bootstrapped Administrator (Test Case #22)", async () => {
+  it("allows bootstrapped Administrator to sign in directly with email and password", async () => {
     const adminCredentials = {
       name: "Dezaakir Admin",
       email: "admin@dezaakir.com",
       password: "AdminStrongPassword!123",
     };
-    const bootstrapped = await bootstrapAdmin(adminCredentials);
+    await bootstrapAdmin(adminCredentials);
 
-    // Login without TOTP is rejected with 401 MFA_REQUIRED
-    const withoutMfa = await request(app).post("/api/auth/login").send({
+    const loginRes = await request(app).post("/api/auth/login").send({
       email: adminCredentials.email,
       password: adminCredentials.password,
     });
-    expect(withoutMfa.status).toBe(401);
-    expect(withoutMfa.body.error.code).toBe("MFA_REQUIRED");
-    expect(await Session.countDocuments()).toBe(0);
-
-    // Login with wrong TOTP code is rejected
-    const badMfa = await request(app).post("/api/auth/login").send({
-      email: adminCredentials.email,
-      password: adminCredentials.password,
-      totpCode: "000000",
-    });
-    expect(badMfa.status).toBe(401);
-
-    // Login with valid TOTP code succeeds and marks session mfaVerified=true
-    const validTotp = generateTotpCode(bootstrapped.totpSecret);
-    const withTotp = await request(app).post("/api/auth/login").send({
-      email: adminCredentials.email,
-      password: adminCredentials.password,
-      totpCode: validTotp,
-    });
-    expect(withTotp.status).toBe(200);
-    expect(withTotp.body.data.session.mfaVerified).toBe(true);
-    expect(withTotp.body.data.user.role).toBe("ADMIN");
-
-    // Login with a single-use recovery code succeeds once, then is consumed
-    const recoveryCode = bootstrapped.recoveryCodes[0]!;
-    const withRecovery = await request(app).post("/api/auth/login").send({
-      email: adminCredentials.email,
-      password: adminCredentials.password,
-      recoveryCode,
-    });
-    expect(withRecovery.status).toBe(200);
-
-    const reuseRecovery = await request(app).post("/api/auth/login").send({
-      email: adminCredentials.email,
-      password: adminCredentials.password,
-      recoveryCode,
-    });
-    expect(reuseRecovery.status).toBe(401);
+    expect(loginRes.status).toBe(200);
+    expect(loginRes.body.data.user.role).toBe("ADMIN");
   });
 });

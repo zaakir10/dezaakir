@@ -90,7 +90,6 @@ export const requireAuth: RequestHandler = (req, _res, next) => {
 
 /**
  * Enforces role-based access control on the backend.
- * For `ADMIN`, also enforces that TOTP MFA is enabled on the account and verified on the current session.
  */
 export function requireRole(...roles: Role[]): RequestHandler {
   return async (req, _res, next) => {
@@ -109,27 +108,6 @@ export function requireRole(...roles: Role[]): RequestHandler {
         metadata: { requiredRoles: roles.join(","), actualRole: req.user.role, path: req.originalUrl },
       });
       return next(AppError.forbidden("You do not have permission to perform this action"));
-    }
-
-    if (req.user.role === "ADMIN") {
-      if (!req.user.mfa?.enabled || !req.session.mfaVerified) {
-        await recordAudit({
-          category: "SECURITY",
-          action: "auth.admin_mfa_required",
-          outcome: "DENIED",
-          actor: req.user._id,
-          actorEmail: req.user.email,
-          req,
-          metadata: { mfaEnabled: Boolean(req.user.mfa?.enabled), sessionMfaVerified: Boolean(req.session.mfaVerified) },
-        });
-        return next(
-          new AppError(
-            403,
-            "ADMIN_MFA_REQUIRED",
-            "Administrator multi-factor authentication must be enabled and verified to access this resource",
-          ),
-        );
-      }
     }
 
     next();

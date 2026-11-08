@@ -11,8 +11,7 @@
     "db:indexes": "bun src/scripts/sync-indexes.ts",
     "db:backup": "bun src/scripts/backup-restore.ts backup",
     "db:restore": "bun src/scripts/backup-restore.ts restore",
-    "create-admin": "bun src/scripts/create-admin.ts",
-    "mfa-code": "bun src/scripts/mfa-helper.ts"
+    "create-admin": "bun src/scripts/create-admin.ts"
   },
   "dependencies": {
     "cors": "^2.8.6",
