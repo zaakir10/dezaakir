@@ -37,6 +37,23 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
     return sendError(res, 400, "INVALID_JSON", "Malformed JSON body");
   }
 
+  // MongoDB / Mongoose connectivity errors (e.g. Atlas IP whitelist / network drop)
+  const errName = typeof err?.name === "string" ? err.name : "";
+  if (
+    errName === "MongooseServerSelectionError" ||
+    errName === "MongoServerSelectionError" ||
+    errName === "MongoNetworkError" ||
+    errName === "MongoNetworkTimeoutError"
+  ) {
+    logger.error({ errName, requestId: req.id, path: req.path }, "Database connectivity error");
+    return sendError(
+      res,
+      503,
+      "DATABASE_UNAVAILABLE",
+      "Database connection is temporarily unavailable. If using MongoDB Atlas, verify that your current IP address is whitelisted in Atlas Network Access.",
+    );
+  }
+
   logger.error({ err, requestId: req.id, path: req.path, method: req.method }, "Unhandled error");
   return sendError(res, 500, "INTERNAL_ERROR", "An unexpected error occurred");
 };

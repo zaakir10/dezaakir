@@ -90,19 +90,31 @@ async function main() {
 
   await connectDatabase();
   try {
-    const result = await bootstrapAdmin({ name, email, password });
-    console.log("\n============================================================");
-    console.log("  DEZAAKIR ADMINISTRATOR BOOTSTRAPPED SUCCESSFULLY");
-    console.log("============================================================");
-    console.log(`Admin ID     : ${result.adminId}`);
-    console.log(`Email        : ${result.email}`);
-    console.log(`TOTP Secret  : ${result.totpSecret}`);
-    console.log(`OTPAuth URI  : ${result.otpauthUri}`);
-    console.log("\nSingle-use MFA Recovery Codes (store offline, never commit):");
-    for (const code of result.recoveryCodes) {
-      console.log(`  - ${code}`);
+    const existing = await User.findOne({ email: emailSchema.parse(email) });
+    if (existing) {
+      existing.name = name.trim();
+      existing.passwordHash = await hashPassword(passwordPolicySchema.parse(password));
+      existing.role = "ADMIN";
+      existing.emailVerified = true;
+      existing.status = "ACTIVE";
+      existing.failedLoginCount = 0;
+      existing.lockedUntil = undefined;
+      await existing.save();
+      console.log("\n============================================================");
+      console.log("  DEZAAKIR ADMINISTRATOR UPDATED SUCCESSFULLY");
+      console.log("============================================================");
+      console.log(`Admin ID     : ${String(existing._id)}`);
+      console.log(`Email        : ${existing.email}`);
+      console.log("============================================================\n");
+    } else {
+      const result = await bootstrapAdmin({ name, email, password });
+      console.log("\n============================================================");
+      console.log("  DEZAAKIR ADMINISTRATOR BOOTSTRAPPED SUCCESSFULLY");
+      console.log("============================================================");
+      console.log(`Admin ID     : ${result.adminId}`);
+      console.log(`Email        : ${result.email}`);
+      console.log("============================================================\n");
     }
-    console.log("============================================================\n");
   } finally {
     await disconnectDatabase();
   }
