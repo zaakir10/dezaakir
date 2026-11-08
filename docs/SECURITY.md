@@ -42,7 +42,7 @@
 | Contact | Honeypot spam protection, CR/LF header-injection prevention, IP hashing, and Admin MFA-gated review | 4 | ✅ |
 | Uploads | Magic-byte signature verification (PNG/JPEG/GIF/WebP/AVIF), 5MB limit, SVG/executable/polyglot rejection, MIME match check, signed Cloudinary uploads, in-use reference protection | 7 | ✅ |
 | Logging | Structured Pino redaction + append-only `AuditLog` for auth events, admin actions, user status changes, and permission denials | 3–8 | ✅ |
-| Backups | Atlas backups + tested `mongodump`/`mongorestore` procedure | 10 | ⏳ |
+| Backups | Atlas continuous backups + HMAC-SHA256 signed `db:backup` / `db:restore` CLI & automated restoration verification | 10 | ✅ |
 
 ## Reporting a vulnerability
 

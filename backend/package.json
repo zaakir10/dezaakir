@@ -9,6 +9,8 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "db:indexes": "bun src/scripts/sync-indexes.ts",
+    "db:backup": "bun src/scripts/backup-restore.ts backup",
+    "db:restore": "bun src/scripts/backup-restore.ts restore",
     "create-admin": "bun src/scripts/create-admin.ts"
   },
   "dependencies": {
