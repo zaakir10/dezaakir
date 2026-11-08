@@ -54,6 +54,24 @@ Readiness probe. Returns `200 { "success": true, "data": { "status": "ready" } }
 | `GET /api/settings` | Public | Returns the public site settings singleton (biography, skills, experience, education, social links, CV URL, SEO defaults). |
 | `PUT /api/admin/settings` | Admin + MFA + CSRF | Updates the site settings singleton and records an admin audit log. |
 
+### Blogs, Categories & Tags (`/api/blogs`, `/api/admin/blogs`, `/api/categories`, `/api/tags`)
+
+| Method & Path | Auth | Description |
+|---|---|---|
+| `GET /api/blogs` | Public | Lists published (and due-scheduled) articles with pagination, category/tag/featured filters, and escaped regex search. Never exposes drafts. |
+| `GET /api/blogs/:slug` | Public | Returns a single published article by slug along with up to 3 related articles. |
+| `POST /api/blogs` | Admin + MFA + CSRF | Creates an article, sanitizes rich HTML (`sanitizeRichHtml`), computes reading time, and ensures a unique slug. |
+| `PUT /api/blogs/:id` | Admin + MFA + CSRF | Updates an article (draft, scheduled, or published) and recomputes reading time. |
+| `DELETE /api/blogs/:id` | Admin + MFA + CSRF | Deletes an article and records an admin audit log. |
+| `GET /api/admin/blogs` | Admin + MFA | Lists all articles (including `DRAFT` and `SCHEDULED`) for the Admin Dashboard. |
+| `GET /api/admin/blogs/:id` | Admin + MFA | Fetches any article by id for editing in the Admin Dashboard. |
+| `GET /api/categories` | Public | Lists categories (optional `?type=BLOG\|PROJECT`). |
+| `POST /api/categories` | Admin + MFA + CSRF | Creates a `BLOG` or `PROJECT` category. |
+| `DELETE /api/categories/:id` | Admin + MFA + CSRF | Deletes a category and unsets references on affected posts/projects. |
+| `GET /api/tags` | Public | Lists all blog tags. |
+| `POST /api/tags` | Admin + MFA + CSRF | Creates a blog tag. |
+| `DELETE /api/tags/:id` | Admin + MFA + CSRF | Deletes a blog tag and pulls it from affected posts. |
+
 ## Planned (later phases)
 
 | Group | Endpoints | Phase |

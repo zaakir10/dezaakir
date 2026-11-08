@@ -130,8 +130,8 @@ All 12 Mongoose models live in `backend/src/models/`:
 | 3 | Authentication & Gmail OTP | ✅ Complete |
 | 4 | Security middleware & API protection | ✅ Complete |
 | 5 | Public frontend | ✅ Complete |
-| 6 | Blog management | ⏳ Next |
-| 7 | Project management | — |
+| 6 | Blog management | ✅ Complete |
+| 7 | Project management | ⏳ Next |
 | 8 | Admin dashboard | — |
 | 9 | Testing & security audit | — |
 | 10 | Production deployment | — |

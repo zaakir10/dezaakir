@@ -1,4 +1,4 @@
-import mongoose, { Schema, type SchemaOptions } from "mongoose";
+import mongoose, { Schema, type SchemaOptions, type Types } from "mongoose";
 
 mongoose.set("strictQuery", true);
 mongoose.set("strict", "throw");
@@ -43,7 +43,7 @@ export const CLOUDINARY_URL = /^https:\/\/res\.cloudinary\.com\/[^\s<>"']+$/i;
 
 /** Embedded image reference (Cloudinary asset). */
 export interface ImageRef {
-  media?: Schema.Types.ObjectId;
+  media?: Types.ObjectId | string;
   url: string;
   publicId: string;
   alt: string;

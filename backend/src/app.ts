@@ -9,6 +9,8 @@ import { csrfProtection } from "./middleware/csrf.js";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 import { healthRouter } from "./routes/health.routes.js";
 import { authRouter } from "./routes/auth.routes.js";
+import { adminBlogRouter, blogRouter } from "./routes/blog.routes.js";
+import { categoriesRouter, tagsRouter } from "./routes/taxonomy.routes.js";
 import { adminMessagesRouter, contactRouter } from "./routes/contact.routes.js";
 import { adminSettingsRouter, settingsRouter } from "./routes/settings.routes.js";
 import { sendError } from "./utils/apiResponse.js";
@@ -76,8 +78,12 @@ export function createApp() {
 
   app.use("/api/health", healthRouter);
   app.use("/api/auth", authRouter);
+  app.use("/api/blogs", blogRouter);
+  app.use("/api/categories", categoriesRouter);
+  app.use("/api/tags", tagsRouter);
   app.use("/api/contact", contactRouter);
   app.use("/api/settings", settingsRouter);
+  app.use("/api/admin/blogs", adminBlogRouter);
   app.use("/api/admin/messages", adminMessagesRouter);
   app.use("/api/admin/settings", adminSettingsRouter);
 

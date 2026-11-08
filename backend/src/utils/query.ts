@@ -10,7 +10,7 @@ export const trusted = <T>(value: T): T => mongoose.trusted(value) as T;
 
 const OBJECT_ID = /^[a-f\d]{24}$/i;
 
-export function isObjectId(value: unknown): value is string {
+export function isObjectId(value: unknown): boolean {
   return typeof value === "string" && OBJECT_ID.test(value);
 }
 
@@ -19,7 +19,7 @@ export function toObjectId(value: unknown, notFound = false): mongoose.Types.Obj
   if (!isObjectId(value)) {
     throw notFound ? AppError.notFound() : AppError.badRequest("Invalid identifier");
   }
-  return new mongoose.Types.ObjectId(value);
+  return new mongoose.Types.ObjectId(String(value));
 }
 
 /** Escapes a user search string for safe use inside a RegExp (prevents ReDoS / regex injection). */
