@@ -36,7 +36,7 @@ interface BlogModel extends Model<IBlog> {
 
 const BlogSchema = new Schema<IBlog, BlogModel>(
   {
-    title: { type: String, required: true, trim: true, minlength: 3, maxlength: 160 },
+    title: { type: String, required: true, trim: true, minlength: 1, maxlength: 160 },
     slug: { type: String, required: true, trim: true, lowercase: true, maxlength: 120, match: SLUG_PATTERN },
     excerpt: { type: String, required: true, trim: true, maxlength: 400 },
     content: { type: String, required: true, maxlength: 500_000 },

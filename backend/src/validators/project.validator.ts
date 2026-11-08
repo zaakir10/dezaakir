@@ -22,26 +22,26 @@ const baseProjectFields = {
   title: z
     .string()
     .trim()
-    .min(2)
+    .min(1)
     .max(120)
     .transform((v) => sanitizePlainText(v)),
   slug: z
     .string()
     .trim()
     .toLowerCase()
-    .min(2)
+    .min(1)
     .max(120)
     .regex(SLUG_PATTERN, "Slug must be lowercase kebab-case")
     .optional(),
   summary: z
     .string()
     .trim()
-    .min(4)
+    .min(1)
     .max(300)
     .transform((v) => sanitizePlainText(v)),
   description: z
     .string()
-    .min(4)
+    .min(1)
     .max(200_000)
     .transform((v) => sanitizeRichHtml(v)),
   coverImage: imageRefSchema.optional().nullable(),

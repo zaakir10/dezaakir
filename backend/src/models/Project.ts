@@ -36,7 +36,7 @@ interface ProjectModel extends Model<IProject> {
 
 const ProjectSchema = new Schema<IProject, ProjectModel>(
   {
-    title: { type: String, required: true, trim: true, minlength: 2, maxlength: 120 },
+    title: { type: String, required: true, trim: true, minlength: 1, maxlength: 120 },
     slug: { type: String, required: true, trim: true, lowercase: true, maxlength: 120, match: SLUG_PATTERN },
     summary: { type: String, required: true, trim: true, maxlength: 300 },
     description: { type: String, required: true, maxlength: 200_000 },

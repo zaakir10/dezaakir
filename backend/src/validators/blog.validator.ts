@@ -27,16 +27,16 @@ export const BlogIdParamSchema = z.strictObject({
 });
 
 export const CreateBlogSchema = z.strictObject({
-  title: z.string().trim().min(3, "Title must be at least 3 characters").max(160),
+  title: z.string().trim().min(1, "Title is required").max(160),
   slug: z
     .string()
     .trim()
     .toLowerCase()
-    .min(2)
+    .min(1)
     .max(120)
     .regex(SLUG_PATTERN, "Slug must contain lowercase letters, numbers, and hyphens only")
     .optional(),
-  excerpt: z.string().trim().min(10, "Excerpt must be at least 10 characters").max(400),
+  excerpt: z.string().trim().max(400).optional().default(""),
   content: z.string().trim().min(1, "Article content is required").max(500_000),
   coverImage: cloudinaryImageSchema.nullish(),
   category: objectIdStr.nullish(),
@@ -49,16 +49,16 @@ export const CreateBlogSchema = z.strictObject({
 });
 
 export const UpdateBlogSchema = z.strictObject({
-  title: z.string().trim().min(3).max(160).optional(),
+  title: z.string().trim().min(1).max(160).optional(),
   slug: z
     .string()
     .trim()
     .toLowerCase()
-    .min(2)
+    .min(1)
     .max(120)
     .regex(SLUG_PATTERN, "Slug must contain lowercase letters, numbers, and hyphens only")
     .optional(),
-  excerpt: z.string().trim().min(10).max(400).optional(),
+  excerpt: z.string().trim().min(1).max(400).optional(),
   content: z.string().trim().min(1).max(500_000).optional(),
   coverImage: cloudinaryImageSchema.nullish(),
   category: objectIdStr.nullish(),

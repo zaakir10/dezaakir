@@ -78,10 +78,17 @@ export async function apiRequest<T>(
   } | null;
 
   if (!res.ok || !body?.success) {
+    const detailsList = Array.isArray(body?.error?.details)
+      ? (body?.error?.details as { path?: string; message?: string }[])
+          .map((d) => (d.path ? `${d.path}: ${d.message}` : d.message))
+          .filter(Boolean)
+          .join(" · ")
+      : "";
+    const baseMessage = body?.error?.message ?? "Request failed";
     throw new ApiClientError(
       res.status,
       body?.error?.code ?? "REQUEST_FAILED",
-      body?.error?.message ?? "Request failed",
+      detailsList ? `${baseMessage} (${detailsList})` : baseMessage,
       body?.error?.details,
     );
   }

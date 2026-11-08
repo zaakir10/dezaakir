@@ -211,9 +211,10 @@ export async function createBlogArticle(
   req?: Request,
 ): Promise<Record<string, unknown>> {
   const title = sanitizePlainText(input.title);
-  const excerpt = sanitizePlainText(input.excerpt);
   const cleanHtml = sanitizeRichHtml(input.content);
   const contentText = htmlToPlainText(cleanHtml);
+  const rawExcerpt = input.excerpt?.trim() || contentText.slice(0, 180) || title;
+  const excerpt = sanitizePlainText(rawExcerpt);
   const readingTime = readingTimeMinutes(contentText);
 
   const requestedSlug = input.slug || slugify(input.title, 110);
