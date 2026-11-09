@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
+import { BrandLogo } from "@/components/ui/BrandLogo";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -188,13 +189,7 @@ export default async function AboutPage() {
                     />
                   ) : (
                     <div className="flex h-full w-full flex-col items-center justify-center p-10 text-center">
-                      <Image
-                        src="/logo.png"
-                        alt="Dezaakir Official Logo"
-                        width={140}
-                        height={140}
-                        className="h-32 w-auto object-contain"
-                      />
+                      <BrandLogo className="h-32" label="Dezaakir Official Logo" />
                       <span className="mt-4 font-mono text-xs uppercase tracking-widest text-white/65">
                         {settings.siteTitle || "Dezaakir"}
                       </span>

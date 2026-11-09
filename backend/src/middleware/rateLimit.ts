@@ -109,14 +109,14 @@ export function createRateLimiter(options: RateLimitOptions): RequestHandler {
 export const registerLimiter = createRateLimiter({
   name: "auth_register",
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: 5,
   keyByEmail: true,
 });
 
 export const otpVerifyLimiter = createRateLimiter({
   name: "auth_verify_otp",
   windowMs: 10 * 60 * 1000,
-  max: 15,
+  max: 5,
   keyByEmail: true,
 });
 
@@ -130,7 +130,7 @@ export const otpResendLimiter = createRateLimiter({
 export const loginLimiter = createRateLimiter({
   name: "auth_login",
   windowMs: 15 * 60 * 1000,
-  max: 15,
+  max: 5,
   keyByEmail: true,
 });
 

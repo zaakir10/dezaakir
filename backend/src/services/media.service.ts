@@ -13,10 +13,11 @@ const ALLOWED_FOLDERS = new Set(["dezaakir/blogs", "dezaakir/projects", "dezaaki
 
 export function assertAllowedFolder(folder: string): string {
   const clean = folder.trim().toLowerCase();
-  if (!ALLOWED_FOLDERS.has(clean)) {
+  const normalized = clean.startsWith("dezaakir/") ? clean : `dezaakir/${clean}`;
+  if (!ALLOWED_FOLDERS.has(normalized)) {
     throw AppError.badRequest("Disallowed upload folder");
   }
-  return clean;
+  return normalized;
 }
 
 /**

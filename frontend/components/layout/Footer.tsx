@@ -1,10 +1,10 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ArrowUpRight, Mail, MapPin } from "lucide-react";
+import { BrandLogo } from "@/components/ui/BrandLogo";
 import { DEFAULT_SITE_SETTINGS } from "@/lib/api";
 import { siteConfig } from "@/lib/site";
 import type { BlogArticle, ProjectItem, SiteSettingsData } from "@/types";
@@ -116,13 +116,7 @@ export function Footer() {
           {/* 1. Brand Section */}
           <div className="lg:col-span-4">
             <Link href="/" className="inline-flex items-center gap-3.5">
-              <Image
-                src="/logo.png"
-                alt="Dezaakir Logo"
-                width={38}
-                height={38}
-                className="h-9 w-auto object-contain"
-              />
+              <BrandLogo className="h-9" />
               <div>
                 <span className="block text-lg font-bold tracking-tight text-white">
                   {settings.siteTitle || "Dezaakir"}

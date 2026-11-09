@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { BrandLogo } from "@/components/ui/BrandLogo";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -144,14 +145,7 @@ export default async function HomePage() {
                     />
                   ) : (
                     <div className="flex h-full w-full flex-col items-center justify-center p-10 text-center">
-                      <Image
-                        src="/logo.png"
-                        alt="Dezaakir Official Emblem"
-                        width={148}
-                        height={148}
-                        priority
-                        className="h-32 w-auto object-contain"
-                      />
+                      <BrandLogo className="h-32" label="Dezaakir Official Emblem" />
                       <p className="mt-5 font-mono text-xs font-bold uppercase tracking-widest text-white">
                         {settings.siteTitle || "Dezaakir"}
                       </p>

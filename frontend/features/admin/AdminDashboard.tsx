@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -43,6 +42,8 @@ import {
   X,
 } from "lucide-react";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
+import { BrandLogo } from "@/components/ui/BrandLogo";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { useAuth } from "@/features/auth/AuthContext";
 import {
   AdminCategoriesView,
@@ -1199,14 +1200,7 @@ export function AdminDashboard() {
             className="flex items-center gap-3 overflow-hidden"
             title="Dezaakir — View Public Website"
           >
-            <Image
-              src="/logo.png"
-              alt="Dezaakir Logo"
-              width={34}
-              height={34}
-              priority
-              className="h-8 w-auto shrink-0 object-contain"
-            />
+            <BrandLogo className="h-8" />
             {(!sidebarCollapsed || isMobile) && (
               <div className="leading-tight">
                 <span className="block text-sm font-bold tracking-tight text-white">
@@ -1383,6 +1377,7 @@ export function AdminDashboard() {
           </div>
 
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             <button
               type="button"
               onClick={openNewBlogEditor}
@@ -1922,7 +1917,7 @@ export function AdminDashboard() {
                           )}
 
                           <div
-                            className="prose prose-invert max-w-none space-y-4 text-sm leading-relaxed text-white/90"
+                            className="article-content max-w-none text-sm"
                             dangerouslySetInnerHTML={{ __html: blogContent }}
                           />
                         </div>

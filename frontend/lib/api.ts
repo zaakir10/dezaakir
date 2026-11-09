@@ -167,18 +167,21 @@ export async function fileToBase64DataUrl(file: File): Promise<string> {
 export async function apiUploadMediaFile<T = { media: import("@/types").MediaItem }>(
   file: File,
   options: {
-    folder: "blogs" | "projects" | "profile" | "general";
+    folder: "blogs" | "projects" | "profile" | "general" | "dezaakir/blogs" | "dezaakir/projects" | "dezaakir/profile" | "dezaakir/general";
     alt: string;
     caption?: string;
   }
 ): Promise<ApiSuccess<T>> {
   const fileBase64 = await fileToBase64DataUrl(file);
+  const normalizedFolder = options.folder.startsWith("dezaakir/")
+    ? options.folder
+    : `dezaakir/${options.folder}`;
   return apiRequest<T>("/api/admin/media/upload", {
     method: "POST",
     body: JSON.stringify({
       fileBase64,
       mimeType: file.type || "image/png",
-      folder: options.folder,
+      folder: normalizedFolder,
       alt: options.alt || file.name,
       caption: options.caption,
     }),

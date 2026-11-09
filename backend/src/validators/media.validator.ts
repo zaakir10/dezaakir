@@ -1,12 +1,15 @@
 import { z } from "zod";
 import { sanitizePlainText } from "../utils/sanitizeHtml.js";
 
+const folderSchema = z
+  .string()
+  .trim()
+  .transform((val) => (val.toLowerCase().startsWith("dezaakir/") ? val.toLowerCase() : `dezaakir/${val.toLowerCase()}`))
+  .pipe(z.enum(["dezaakir/blogs", "dezaakir/projects", "dezaakir/profile", "dezaakir/general"]));
+
 export const signUploadSchema = z
   .object({
-    folder: z
-      .enum(["dezaakir/blogs", "dezaakir/projects", "dezaakir/profile", "dezaakir/general"])
-      .optional()
-      .default("dezaakir/general"),
+    folder: folderSchema.optional().default("dezaakir/general"),
   })
   .strict();
 
@@ -16,10 +19,7 @@ export const uploadMediaSchema = z
     mimeType: z.string().trim().min(3).max(64).optional(),
     claimedMimeType: z.string().trim().min(3).max(64).optional(),
     originalFilename: z.string().trim().min(1).max(200).optional(),
-    folder: z
-      .enum(["dezaakir/blogs", "dezaakir/projects", "dezaakir/profile", "dezaakir/general"])
-      .optional()
-      .default("dezaakir/general"),
+    folder: folderSchema.optional().default("dezaakir/general"),
     alt: z
       .string()
       .trim()
@@ -42,9 +42,7 @@ export const listMediaQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).max(1000).optional().default(1),
     limit: z.coerce.number().int().min(1).max(100).optional().default(24),
-    folder: z
-      .enum(["dezaakir/blogs", "dezaakir/projects", "dezaakir/profile", "dezaakir/general"])
-      .optional(),
+    folder: folderSchema.optional(),
     search: z.string().trim().max(100).optional(),
   })
   .strict();

@@ -1,10 +1,11 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ArrowUpRight, LayoutDashboard, LogOut, Menu, User as UserIcon, X } from "lucide-react";
+import { BrandLogo } from "@/components/ui/BrandLogo";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { useAuth } from "@/features/auth/AuthContext";
 
 const NAV_LINKS = [
@@ -56,14 +57,7 @@ export function Navbar() {
           className="group flex items-center gap-3.5 focus:outline-none"
           aria-label="Dezaakir Home"
         >
-          <Image
-            src="/logo.png"
-            alt="Dezaakir Logo"
-            width={40}
-            height={40}
-            priority
-            className="h-9 w-auto object-contain transition duration-200 group-hover:opacity-90"
-          />
+          <BrandLogo className="h-9 transition duration-200 group-hover:opacity-90" />
           <div className="flex flex-col">
             <span className="text-base font-bold tracking-tight text-white">Dezaakir</span>
             <span className="font-mono text-[10px] uppercase tracking-widest text-white/55">
@@ -95,6 +89,7 @@ export function Navbar() {
 
         {/* Desktop Authentication & Action Controls */}
         <div className="hidden items-center gap-2.5 md:flex">
+          <ThemeToggle />
           {!loading && user ? (
             <>
               <Link
@@ -143,17 +138,20 @@ export function Navbar() {
           )}
         </div>
 
-        {/* Mobile Menu Trigger */}
-        <button
-          type="button"
-          onClick={() => setMobileOpen((prev) => !prev)}
-          className="inline-flex items-center justify-center border border-white/25 p-2.5 text-white transition hover:border-white md:hidden"
-          aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
-          aria-expanded={mobileOpen}
-          aria-controls="mobile-primary-nav"
-        >
-          {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </button>
+        {/* Mobile Theme Toggle & Menu Trigger */}
+        <div className="flex items-center gap-2 md:hidden">
+          <ThemeToggle className="h-[42px] w-[42px]" />
+          <button
+            type="button"
+            onClick={() => setMobileOpen((prev) => !prev)}
+            className="inline-flex items-center justify-center border border-white/25 p-2.5 text-white transition hover:border-white"
+            aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
+            aria-expanded={mobileOpen}
+            aria-controls="mobile-primary-nav"
+          >
+            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+        </div>
       </div>
 
       {/* Mobile Navigation Drawer */}

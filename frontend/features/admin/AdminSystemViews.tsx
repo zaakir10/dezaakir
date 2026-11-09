@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import { BrandLogo } from "@/components/ui/BrandLogo";
 import { useState } from "react";
 import {
   Activity,
@@ -828,13 +828,7 @@ export function AdminSiteSettingsView({
           <div className="grid gap-6 md:grid-cols-2">
             <div className="flex items-center gap-5 border border-white/20 bg-navy p-5">
               <div className="flex h-20 w-20 shrink-0 items-center justify-center border border-white/20 bg-white/5 p-3">
-                <Image
-                  src="/logo.png"
-                  alt="Dezaakir Official Logo"
-                  width={56}
-                  height={56}
-                  className="h-14 w-auto object-contain"
-                />
+                <BrandLogo className="h-14" label="Dezaakir Official Logo" />
               </div>
               <div>
                 <span className="font-mono text-[10px] uppercase tracking-widest text-white/60">
@@ -848,22 +842,22 @@ export function AdminSiteSettingsView({
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col justify-between border border-white/25 bg-navy p-4">
-                <span className="font-mono text-[10px] uppercase tracking-wider text-white/60">
+              <div className="flex flex-col justify-between border border-white/25 bg-brand-navy p-4 text-brand-white">
+                <span className="font-mono text-[10px] uppercase tracking-wider text-brand-white/60">
                   Primary Surface
                 </span>
                 <div className="mt-6">
-                  <p className="font-bold text-white">Navy Blue</p>
-                  <p className="font-mono text-xs text-white/80">#0B1628</p>
+                  <p className="font-bold text-brand-white">Navy Blue</p>
+                  <p className="font-mono text-xs text-brand-white/80">#0B1628</p>
                 </div>
               </div>
-              <div className="flex flex-col justify-between border border-white bg-white p-4 text-navy">
-                <span className="font-mono text-[10px] uppercase tracking-wider text-navy/70">
+              <div className="flex flex-col justify-between border border-white/25 bg-brand-white p-4 text-brand-navy">
+                <span className="font-mono text-[10px] uppercase tracking-wider text-brand-navy/70">
                   Primary Contrast
                 </span>
                 <div className="mt-6">
-                  <p className="font-bold text-navy">Pure White</p>
-                  <p className="font-mono text-xs text-navy/80">#FFFFFF</p>
+                  <p className="font-bold text-brand-navy">Pure White</p>
+                  <p className="font-mono text-xs text-brand-navy/80">#FFFFFF</p>
                 </div>
               </div>
             </div>

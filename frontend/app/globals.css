@@ -6,20 +6,45 @@
  *   Primary White     : #FFFFFF
  * Visual hierarchy, depth, and surface separation are achieved exclusively
  * through opacity variations of #0B1628 and #FFFFFF.
+ *
+ * THEME SYSTEM (centralized)
+ * --------------------------
+ * Every component is styled with two semantic Tailwind tokens:
+ *   `navy`  → the theme CANVAS  (var(--background))
+ *   `white` → the theme INK     (var(--foreground))
+ * Dark Mode (default):   canvas = #0B1628, ink = #FFFFFF
+ * Light Mode (`.light`): canvas = #FFFFFF, ink = #0B1628
+ * So `bg-navy text-white` is a Navy page with White text in Dark Mode and a
+ * White page with Navy text in Light Mode; `bg-white text-navy` buttons become
+ * Navy buttons with White text; `border-white/15` borders become Navy/15.
+ * Use `brand-navy` / `brand-white` only where a literal, theme-independent
+ * brand color is required (e.g. brand swatches).
  */
-:root {
+:root,
+:root.dark {
+  color-scheme: dark;
   --background: #0B1628;
   --foreground: #FFFFFF;
   --surface: #0B1628;
+  --surface-foreground: #FFFFFF;
   --text-primary: #FFFFFF;
-  --text-secondary: rgba(255, 255, 255, 0.75);
-  --border: rgba(255, 255, 255, 0.15);
+  --text-secondary: color-mix(in srgb, var(--foreground) 75%, transparent);
+  --border: color-mix(in srgb, var(--foreground) 15%, transparent);
+}
+
+:root.light {
+  color-scheme: light;
+  --background: #FFFFFF;
+  --foreground: #0B1628;
+  --surface: #FFFFFF;
+  --surface-foreground: #0B1628;
+  --text-primary: #0B1628;
 }
 
 @theme {
   --color-*: initial;
-  --color-navy: #0B1628;
-  --color-white: #FFFFFF;
+  --color-brand-navy: #0B1628;
+  --color-brand-white: #FFFFFF;
   --color-transparent: transparent;
   --color-current: currentColor;
 
@@ -27,11 +52,41 @@
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
 }
 
+/* Theme-aware semantic tokens (inlined so they resolve per element). */
+@theme inline {
+  --color-navy: var(--background);
+  --color-white: var(--foreground);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+}
+
+/* Official Dezaakir logo rendered as a mask: original geometry and
+   proportions are preserved while the fill follows the active theme. */
+.brand-logo {
+  display: inline-block;
+  flex-shrink: 0;
+  aspect-ratio: 1024 / 768;
+  background-color: var(--foreground);
+  -webkit-mask: url("/logo.png") center / contain no-repeat;
+  mask: url("/logo.png") center / contain no-repeat;
+}
+
+/* Short cross-fade applied only while the theme is being switched. */
+@media (prefers-reduced-motion: no-preference) {
+  html.theme-transition,
+  html.theme-transition *,
+  html.theme-transition *::before,
+  html.theme-transition *::after {
+    transition-property: background-color, color, border-color, outline-color, fill, stroke !important;
+    transition-duration: 220ms !important;
+    transition-timing-function: ease !important;
+  }
+}
+
 @layer base {
   html {
-    color-scheme: dark;
-    background-color: #0B1628;
-    color: #FFFFFF;
+    background-color: var(--background);
+    color: var(--foreground);
     scroll-behavior: smooth;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -49,6 +104,16 @@
     @apply outline-2 outline-offset-2 outline-white;
   }
 
+  input::placeholder,
+  textarea::placeholder {
+    color: color-mix(in srgb, var(--foreground) 40%, transparent);
+  }
+
+  select option {
+    background-color: var(--background);
+    color: var(--foreground);
+  }
+
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
@@ -60,18 +125,26 @@
   }
 }
 
-/* Editorial rich-text typography for Blog Articles & Project Case Studies */
-.article-content {
+/* Editorial rich-text typography for Blog Articles, Project Case Studies,
+   and the admin Rich Text Editor — fully theme-aware. */
+.article-content,
+.prose-dezaakir {
   line-height: 1.85;
+  color: color-mix(in srgb, var(--foreground) 88%, transparent);
+}
+
+.article-content {
   font-size: 1.0625rem;
-  color: rgba(255, 255, 255, 0.88);
 }
 
 .article-content h1,
 .article-content h2,
 .article-content h3,
-.article-content h4 {
-  color: #FFFFFF;
+.article-content h4,
+.prose-dezaakir h2,
+.prose-dezaakir h3,
+.prose-dezaakir h4 {
+  color: var(--foreground);
   font-weight: 700;
   letter-spacing: -0.025em;
   margin-top: 2.5rem;
@@ -80,10 +153,21 @@
   scroll-margin-top: 6rem;
 }
 
-.article-content h2 {
+.prose-dezaakir h2,
+.prose-dezaakir h3,
+.prose-dezaakir h4 {
+  margin-top: 1.25rem;
+}
+
+.article-content h2,
+.prose-dezaakir h2 {
   font-size: 1.625rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  border-bottom: 1px solid color-mix(in srgb, var(--foreground) 15%, transparent);
   padding-bottom: 0.625rem;
+}
+
+.prose-dezaakir h2 {
+  font-size: 1.25rem;
 }
 
 .article-content h3 {
@@ -95,17 +179,25 @@
   margin-bottom: 1.25rem;
 }
 
+.prose-dezaakir p {
+  margin: 0.5rem 0;
+}
+
 .article-content ul,
-.article-content ol {
+.article-content ol,
+.prose-dezaakir ul,
+.prose-dezaakir ol {
   margin: 1.25rem 0;
   padding-left: 1.5rem;
 }
 
-.article-content ul {
+.article-content ul,
+.prose-dezaakir ul {
   list-style-type: square;
 }
 
-.article-content ol {
+.article-content ol,
+.prose-dezaakir ol {
   list-style-type: decimal;
 }
 
@@ -114,8 +206,9 @@
   padding-left: 0.25rem;
 }
 
-.article-content a {
-  color: #FFFFFF;
+.article-content a,
+.prose-dezaakir a {
+  color: var(--foreground);
   text-decoration: underline;
   text-underline-offset: 4px;
   transition: opacity 150ms ease;
@@ -125,33 +218,37 @@
   opacity: 0.8;
 }
 
-.article-content blockquote {
+.article-content blockquote,
+.prose-dezaakir blockquote {
   margin: 2rem 0;
   padding: 1.25rem 1.5rem;
-  border-left: 3px solid #FFFFFF;
-  background-color: rgba(255, 255, 255, 0.04);
+  border-left: 3px solid var(--foreground);
+  background-color: color-mix(in srgb, var(--foreground) 4%, transparent);
   font-style: italic;
-  color: rgba(255, 255, 255, 0.92);
+  color: color-mix(in srgb, var(--foreground) 92%, transparent);
 }
 
-.article-content code {
+.article-content code,
+.prose-dezaakir code {
   font-family: var(--font-mono);
   font-size: 0.875em;
-  background-color: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  background-color: color-mix(in srgb, var(--foreground) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--foreground) 18%, transparent);
   padding: 0.15rem 0.4rem;
-  color: #FFFFFF;
+  color: var(--foreground);
 }
 
-.article-content pre {
+.article-content pre,
+.prose-dezaakir pre {
   margin: 1.75rem 0;
   padding: 1.25rem 1.5rem;
   overflow-x: auto;
-  background-color: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background-color: color-mix(in srgb, var(--foreground) 3%, transparent);
+  border: 1px solid color-mix(in srgb, var(--foreground) 20%, transparent);
 }
 
-.article-content pre code {
+.article-content pre code,
+.prose-dezaakir pre code {
   background: transparent;
   border: none;
   padding: 0;
@@ -168,20 +265,21 @@
 
 .article-content th,
 .article-content td {
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid color-mix(in srgb, var(--foreground) 20%, transparent);
   padding: 0.75rem 1rem;
   text-align: left;
 }
 
 .article-content th {
-  background-color: rgba(255, 255, 255, 0.08);
-  color: #FFFFFF;
+  background-color: color-mix(in srgb, var(--foreground) 8%, transparent);
+  color: var(--foreground);
   font-weight: 600;
 }
 
-.article-content img {
+.article-content img,
+.prose-dezaakir img {
   max-width: 100%;
   height: auto;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid color-mix(in srgb, var(--foreground) 15%, transparent);
   margin: 2rem 0;
 }

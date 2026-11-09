@@ -1,8 +1,8 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { ShieldAlert } from "lucide-react";
+import { BrandLogo } from "@/components/ui/BrandLogo";
 import { useAuth } from "@/features/auth/AuthContext";
 import { AdminDashboard } from "@/features/admin/AdminDashboard";
 
@@ -13,14 +13,7 @@ export default function AdminPage() {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center bg-navy px-4 text-white">
         <div className="flex flex-col items-center border border-white/20 bg-white/[0.02] px-8 py-6">
-          <Image
-            src="/logo.png"
-            alt="Dezaakir Logo"
-            width={40}
-            height={40}
-            priority
-            className="h-10 w-auto object-contain"
-          />
+          <BrandLogo className="h-10" />
           <p className="mt-4 font-mono text-xs uppercase tracking-widest text-white/80">
             Verifying Dezaakir Administrator Session...
           </p>
