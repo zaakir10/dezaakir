@@ -21,6 +21,7 @@ build/
 .env.test.local
 .env.production.local
 !.env.example
+.env.example
 
 # Secrets, Encryption Keys, Certificates & Recovery Codes
 *.pem
