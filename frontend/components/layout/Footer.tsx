@@ -72,7 +72,7 @@ export function Footer() {
 
   const social = settings.socialLinks || {};
   const socialEntries = [
-    { label: "GitHub", href: social.github || "https://github.com/dezaakir" },
+    { label: "GitHub", href: social.github || "https://github.com/zaakir10" },
     { label: "Facebook", href: social.facebook || "https://facebook.com/dezaakir" },
     { label: "TikTok", href: social.tiktok || "https://tiktok.com/@dezaakir" },
     ...(social.linkedin ? [{ label: "LinkedIn", href: social.linkedin }] : []),
@@ -297,7 +297,7 @@ export function Footer() {
               <ul className="space-y-2 border-t border-white/10 pt-3 font-mono text-xs">
                 <li>
                   <a
-                    href={social.github || "https://github.com/dezaakir"}
+                    href={social.github || "https://github.com/zaakir10"}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 text-white/75 transition hover:text-white"

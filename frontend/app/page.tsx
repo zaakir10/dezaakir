@@ -37,7 +37,7 @@ export default async function HomePage() {
 
   const social = settings.socialLinks || {};
   const socialLinksList = [
-    { label: "GitHub", href: social.github || "https://github.com/dezaakir" },
+    { label: "GitHub", href: social.github || "https://github.com/zaakir10" },
     ...(social.facebook ? [{ label: "Facebook", href: social.facebook }] : []),
     ...(social.tiktok ? [{ label: "TikTok", href: social.tiktok }] : []),
     ...(social.linkedin ? [{ label: "LinkedIn", href: social.linkedin }] : []),

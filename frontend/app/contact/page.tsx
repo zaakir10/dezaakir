@@ -18,8 +18,8 @@ export default async function ContactPage() {
   const socialChannels = [
     {
       label: "GitHub",
-      handle: "github.com",
-      href: social.github || "https://github.com/dezaakir",
+      handle: "@zaakir10",
+      href: social.github || "https://github.com/zaakir10",
     },
     {
       label: "Facebook",

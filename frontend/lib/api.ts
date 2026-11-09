@@ -202,7 +202,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettingsData = {
   location: "Remote · Global",
   cvUrl: "/dezaakir-cv.pdf",
   socialLinks: {
-    github: "https://github.com/dezaakir",
+    github: "https://github.com/zaakir10",
     facebook: "https://facebook.com/dezaakir",
     tiktok: "https://tiktok.com/@dezaakir",
     linkedin: "https://linkedin.com/in/dezaakir",
