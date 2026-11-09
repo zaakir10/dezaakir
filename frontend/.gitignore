@@ -27,6 +27,7 @@ next-env.d.ts
 .env.test.local
 .env.production.local
 !.env.example
+.env.example
 
 # Logs
 logs/
