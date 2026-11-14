@@ -1,5 +1,17 @@
-import { createCipheriv, createDecipheriv, createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHmac, randomBytes, randomInt, scrypt, timingSafeEqual } from "node:crypto";
+import { promisify } from "node:util";
 import { env, isTest } from "../config/env.js";
+
+const scryptAsync = promisify(scrypt);
+
+interface BunPasswordApi {
+  hash(password: string, options: { algorithm: "argon2id"; memoryCost: number; timeCost: number }): Promise<string>;
+  verify(password: string, hash: string): Promise<boolean>;
+}
+
+function getBunPassword(): BunPasswordApi | undefined {
+  return (globalThis as { Bun?: { password?: BunPasswordApi } }).Bun?.password;
+}
 
 /**
  * Argon2id parameters (OWASP recommended minimum: m=19456..65536, t=2, p=1).
@@ -13,12 +25,32 @@ const ARGON_OPTIONS = {
 };
 
 export async function hashPassword(password: string): Promise<string> {
-  return Bun.password.hash(password, ARGON_OPTIONS);
+  const bunPassword = getBunPassword();
+  if (bunPassword) {
+    return bunPassword.hash(password, ARGON_OPTIONS);
+  }
+  const salt = randomBytes(16).toString("hex");
+  const derived = (await scryptAsync(password, salt, 64)) as Buffer;
+  return `$scrypt$${salt}$${derived.toString("hex")}`;
 }
 
 export async function verifyPassword(password: string, hash: string): Promise<boolean> {
   try {
-    return await Bun.password.verify(password, hash);
+    if (hash.startsWith("$scrypt$")) {
+      const parts = hash.split("$");
+      const salt = parts[2];
+      const expectedHex = parts[3];
+      if (!salt || !expectedHex) return false;
+      const derived = (await scryptAsync(password, salt, 64)) as Buffer;
+      const expected = Buffer.from(expectedHex, "hex");
+      if (derived.length !== expected.length) return false;
+      return timingSafeEqual(derived, expected);
+    }
+    const bunPassword = getBunPassword();
+    if (bunPassword) {
+      return await bunPassword.verify(password, hash);
+    }
+    return false;
   } catch {
     return false;
   }
