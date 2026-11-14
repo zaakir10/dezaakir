@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -18,10 +18,26 @@ const LoginFormSchema = z.object({
 
 type LoginFormValues = z.infer<typeof LoginFormSchema>;
 
+function getSafeNextPath(): string {
+  if (typeof window === "undefined") return "/";
+  const params = new URLSearchParams(window.location.search);
+  const candidate = params.get("next") ?? params.get("redirect");
+  if (candidate && candidate.startsWith("/") && !candidate.startsWith("//")) {
+    return candidate;
+  }
+  return "/";
+}
+
 export default function LoginPage() {
   const router = useRouter();
-  const { setAuthSession } = useAuth();
+  const { user, loading, setAuthSession } = useAuth();
   const [serverError, setServerError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace(getSafeNextPath());
+    }
+  }, [loading, user, router]);
 
   const {
     register,
@@ -56,11 +72,9 @@ export default function LoginPage() {
         csrfToken: data.csrfToken,
       });
 
-      if (data.user.role === "ADMIN") {
-        router.push("/admin");
-      } else {
-        router.push("/account");
-      }
+      const targetPath = getSafeNextPath();
+      router.replace(targetPath);
+      router.refresh();
     } catch (err) {
       if (err instanceof ApiClientError) {
         if (err.code === "EMAIL_NOT_VERIFIED") {
