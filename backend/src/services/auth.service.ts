@@ -15,6 +15,7 @@ import {
   type IUser,
 } from "../models/index.js";
 import { deriveCsrfToken } from "../middleware/auth.js";
+import { evaluateUserSuspension } from "./moderation.service.js";
 import { AppError } from "../utils/AppError.js";
 import { SESSION_TTL_MS } from "../utils/cookies.js";
 import {
@@ -413,15 +414,24 @@ export async function loginUser(input: LoginInput, req?: Request, existingRawTok
   }
 
   if (user.status === "SUSPENDED") {
-    await recordAudit({
-      category: "SECURITY",
-      action: "auth.login_suspended",
-      outcome: "DENIED",
-      actor: user._id,
-      actorEmail: user.email,
-      req,
-    });
-    throw new AppError(403, "ACCOUNT_SUSPENDED", "Your account has been suspended");
+    const suspCheck = await evaluateUserSuspension(user.toObject(), req);
+    if (suspCheck.suspended) {
+      await recordAudit({
+        category: "SECURITY",
+        action: "auth.login_suspended",
+        outcome: "DENIED",
+        actor: user._id,
+        actorEmail: user.email,
+        req,
+        metadata: {
+          suspensionType: user.suspension?.type ?? "PERMANENT",
+          expiresAt: user.suspension?.expiresAt ? new Date(user.suspension.expiresAt).toISOString() : "PERMANENT",
+        },
+      });
+      throw new AppError(403, "ACCOUNT_SUSPENDED", suspCheck.message ?? "Your account has been suspended");
+    }
+    user.status = suspCheck.user.status;
+    user.suspension = undefined;
   }
 
   const mfaVerified = true;

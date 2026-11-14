@@ -9,8 +9,16 @@ import {
   previewAdminEmailSchema,
   sendAdminEmailSchema,
   listEmailCampaignsQuerySchema,
+  cleanupEmailHistorySchema,
   campaignIdParamSchema,
   listAuditLogsQuerySchema,
+  cleanupAuditLogsSchema,
+  suspendUserSchema,
+  reinstateUserSchema,
+  listModerationHistoryQuerySchema,
+  updateRetentionSettingsSchema,
+  testEmailDeliverabilitySchema,
+  suppressionIdParamSchema,
 } from "../validators/admin.validator.js";
 import {
   getAdminOverviewHandler,
@@ -22,8 +30,22 @@ import {
   previewAdminEmailHandler,
   sendAdminEmailHandler,
   listEmailCampaignsHandler,
+  cleanupEmailHistoryHandler,
   getEmailCampaignDetailsHandler,
   listAuditLogsHandler,
+  exportAuditLogsHandler,
+  cleanupAuditLogsHandler,
+  getSuspiciousActivityHandler,
+  suspendUserHandler,
+  reinstateUserHandler,
+  listModerationHistoryHandler,
+  getRetentionOverviewHandler,
+  updateRetentionSettingsHandler,
+  runRetentionCleanupHandler,
+  getEmailDeliverabilityHandler,
+  testEmailDeliverabilityHandler,
+  listSuppressionsHandler,
+  removeSuppressionHandler,
 } from "../controllers/admin.controller.js";
 
 export const adminRouter = Router();
@@ -56,6 +78,24 @@ adminRouter.patch(
   updateAdminUserRoleHandler,
 );
 
+adminRouter.post(
+  "/users/:id/suspend",
+  validate({ params: userIdParamSchema, body: suspendUserSchema }),
+  suspendUserHandler,
+);
+
+adminRouter.post(
+  "/users/:id/reinstate",
+  validate({ params: userIdParamSchema, body: reinstateUserSchema }),
+  reinstateUserHandler,
+);
+
+adminRouter.get(
+  "/moderation-history",
+  validate({ query: listModerationHistoryQuerySchema }),
+  listModerationHistoryHandler,
+);
+
 adminRouter.delete(
   "/users/:id/sessions",
   validate({ params: userIdParamSchema }),
@@ -81,6 +121,12 @@ adminRouter.get(
   listEmailCampaignsHandler,
 );
 
+adminRouter.post(
+  "/emails/history/cleanup",
+  validate({ body: cleanupEmailHistorySchema }),
+  cleanupEmailHistoryHandler,
+);
+
 adminRouter.get(
   "/emails/history/:id",
   validate({ params: campaignIdParamSchema }),
@@ -91,4 +137,39 @@ adminRouter.get(
   "/audit-logs",
   validate({ query: listAuditLogsQuerySchema }),
   listAuditLogsHandler,
+);
+
+adminRouter.get(
+  "/audit-logs/export",
+  validate({ query: listAuditLogsQuerySchema }),
+  exportAuditLogsHandler,
+);
+
+adminRouter.post(
+  "/audit-logs/cleanup",
+  validate({ body: cleanupAuditLogsSchema }),
+  cleanupAuditLogsHandler,
+);
+
+adminRouter.get("/suspicious-activity", getSuspiciousActivityHandler);
+
+adminRouter.get("/retention", getRetentionOverviewHandler);
+adminRouter.put(
+  "/retention",
+  validate({ body: updateRetentionSettingsSchema }),
+  updateRetentionSettingsHandler,
+);
+adminRouter.post("/retention/run", runRetentionCleanupHandler);
+
+adminRouter.get("/email-deliverability", getEmailDeliverabilityHandler);
+adminRouter.post(
+  "/email-deliverability/test",
+  validate({ body: testEmailDeliverabilitySchema }),
+  testEmailDeliverabilityHandler,
+);
+adminRouter.get("/email-deliverability/suppressions", listSuppressionsHandler);
+adminRouter.delete(
+  "/email-deliverability/suppressions/:id",
+  validate({ params: suppressionIdParamSchema }),
+  removeSuppressionHandler,
 );

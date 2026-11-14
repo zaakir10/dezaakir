@@ -15,6 +15,7 @@ export interface ICampaignRecipient {
   name?: string;
   status: RecipientDeliveryStatus;
   error?: string;
+  errorCategory?: string;
   sentAt?: Date;
 }
 
@@ -35,6 +36,7 @@ export interface IEmailCampaign {
   respectMarketingConsent: boolean;
   recipients: ICampaignRecipient[];
   completedAt: Date | null;
+  expiresAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -53,6 +55,7 @@ const CampaignRecipientSchema = new Schema<ICampaignRecipient>(
       required: true,
     },
     error: { type: String, maxlength: 400 },
+    errorCategory: { type: String, maxlength: 60 },
     sentAt: { type: Date },
   },
   { _id: false }
@@ -144,6 +147,9 @@ const EmailCampaignSchema = new Schema<IEmailCampaign>(
       type: Date,
       default: null,
     },
+    expiresAt: {
+      type: Date,
+    },
   },
   {
     timestamps: true,
@@ -153,6 +159,7 @@ const EmailCampaignSchema = new Schema<IEmailCampaign>(
 
 EmailCampaignSchema.index({ createdAt: -1 });
 EmailCampaignSchema.index({ status: 1, createdAt: -1 });
+EmailCampaignSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0, name: "email_campaign_ttl" });
 
 export const EmailCampaign: Model<IEmailCampaign> =
   (mongoose.models.EmailCampaign as Model<IEmailCampaign> | undefined) ??

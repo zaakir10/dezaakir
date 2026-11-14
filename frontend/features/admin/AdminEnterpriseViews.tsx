@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { apiFetch } from "@/lib/api";
 import {
   AlertTriangle,
   ArrowDown,
@@ -1736,6 +1737,8 @@ export function AdminEmailHistoryView({
   onInspectCampaign,
   inspectedCampaign,
   onCloseInspector,
+  onToast,
+  onConfirm,
 }: {
   campaigns: EmailCampaignItem[];
   meta: PaginationMeta;
@@ -1749,18 +1752,141 @@ export function AdminEmailHistoryView({
   onInspectCampaign: (id: string) => void;
   inspectedCampaign: EmailCampaignItem | null;
   onCloseInspector: () => void;
+  onToast?: (type: "success" | "error", text: string) => void;
+  onConfirm?: (cfg: {
+    title: string;
+    description: string;
+    confirmLabel?: string;
+    onConfirm: () => Promise<void> | void;
+  }) => void;
 }) {
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [todayOnly, setTodayOnly] = useState(false);
+  const [filteredCampaigns, setFilteredCampaigns] = useState<EmailCampaignItem[] | null>(null);
+  const [totalStored, setTotalStored] = useState<number | null>(null);
+  const [retentionDays, setRetentionDays] = useState<number | null>(null);
+  const [localLoading, setLocalLoading] = useState(false);
+
+  const loadFiltered = useCallback(
+    async (targetPage = 1) => {
+      setLocalLoading(true);
+      try {
+        const qs = new URLSearchParams({
+          page: String(targetPage),
+          limit: "20",
+          ...(search.trim() ? { search: search.trim() } : {}),
+          ...(statusFilter ? { status: statusFilter } : {}),
+          ...(todayOnly ? { todayOnly: "true" } : {}),
+          ...(dateFrom && !todayOnly ? { dateFrom } : {}),
+          ...(dateTo && !todayOnly ? { dateTo } : {}),
+        });
+        const res = await apiFetch<{
+          campaigns: EmailCampaignItem[];
+          totalStoredRecords?: number;
+          retentionDays?: number;
+        }>(`/api/admin/emails/history?${qs.toString()}`);
+        setFilteredCampaigns(res.data.campaigns);
+        if (typeof res.data.totalStoredRecords === "number") {
+          setTotalStored(res.data.totalStoredRecords);
+        }
+        if (typeof res.data.retentionDays === "number") {
+          setRetentionDays(res.data.retentionDays);
+        }
+      } catch (err) {
+        onToast?.("error", err instanceof Error ? err.message : "Failed to filter email history");
+      } finally {
+        setLocalLoading(false);
+      }
+    },
+    [search, statusFilter, todayOnly, dateFrom, dateTo, onToast],
+  );
+
+  useEffect(() => {
+    void loadFiltered(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const displayedCampaigns = filteredCampaigns ?? campaigns;
+
+  const triggerCleanup = (scope: "TODAY" | "ALL") => {
+    const run = async () => {
+      try {
+        const res = await apiFetch<{ deletedCount: number; remainingCount: number }>(
+          "/api/admin/emails/history/cleanup",
+          {
+            method: "POST",
+            body: JSON.stringify({ scope, confirm: true }),
+          },
+        );
+        onToast?.(
+          "success",
+          `Deleted ${res.data.deletedCount} email history record(s). Remaining: ${res.data.remainingCount}.`,
+        );
+        await loadFiltered(1);
+        onSearch();
+      } catch (err) {
+        onToast?.("error", err instanceof Error ? err.message : "Failed to delete email history");
+      }
+    };
+
+    if (onConfirm) {
+      onConfirm({
+        title: scope === "TODAY" ? "Delete Today's Email History?" : "Delete All Email History?",
+        description:
+          scope === "TODAY"
+            ? "This permanently removes today's email history records from MongoDB to save storage."
+            : "This permanently deletes ALL stored email history records from MongoDB. This action cannot be undone.",
+        confirmLabel: scope === "TODAY" ? "Delete Today's History" : "Delete All History",
+        onConfirm: run,
+      });
+    } else {
+      void run();
+    }
+  };
+
   return (
     <div className="space-y-5">
+      {/* Storage Control Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 border border-white/15 bg-white/[0.02] p-4">
-        <div className="relative min-w-[220px] flex-1">
+        <div className="text-xs text-white/80">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-white/60">
+            Stored Email Records:
+          </span>{" "}
+          <strong className="font-mono text-white">{totalStored ?? meta.total}</strong>
+          {retentionDays !== null && (
+            <span className="ml-3 text-white/60">
+              Auto-expiration: <strong className="text-white">{retentionDays} days</strong>
+            </span>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => triggerCleanup("TODAY")}
+            className="border border-white/30 px-3 py-1.5 font-mono text-[10px] uppercase text-white hover:bg-white/10"
+          >
+            Delete Today&apos;s Email History
+          </button>
+          <button
+            type="button"
+            onClick={() => triggerCleanup("ALL")}
+            className="border border-white bg-white px-3 py-1.5 font-mono text-[10px] font-bold uppercase text-navy hover:bg-white/90"
+          >
+            Delete All Email History
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 border border-white/15 bg-white/[0.02] p-4">
+        <div className="relative min-w-[200px] flex-1">
           <Search className="pointer-events-none absolute top-2.5 left-3 h-3.5 w-3.5 text-white/50" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && onSearch()}
-            placeholder="Search email history by subject or initiating administrator..."
+            onKeyDown={(e) => e.key === "Enter" && void loadFiltered(1)}
+            placeholder="Search email history by subject or administrator..."
             className="w-full border border-white/20 bg-navy py-2 pr-3 pl-8 text-xs text-white focus:border-white focus:outline-none"
           />
         </div>
@@ -1777,18 +1903,51 @@ export function AdminEmailHistoryView({
           <option value="PROCESSING">PROCESSING</option>
         </select>
 
+        <input
+          type="date"
+          value={dateFrom}
+          onChange={(e) => {
+            setTodayOnly(false);
+            setDateFrom(e.target.value);
+          }}
+          className="border border-white/20 bg-navy px-2.5 py-1.5 text-xs text-white focus:border-white focus:outline-none"
+          aria-label="From date"
+        />
+        <input
+          type="date"
+          value={dateTo}
+          onChange={(e) => {
+            setTodayOnly(false);
+            setDateTo(e.target.value);
+          }}
+          className="border border-white/20 bg-navy px-2.5 py-1.5 text-xs text-white focus:border-white focus:outline-none"
+          aria-label="To date"
+        />
         <button
           type="button"
-          onClick={onSearch}
+          onClick={() => setTodayOnly((v) => !v)}
+          className={`border px-3 py-2 font-mono text-[10px] uppercase ${
+            todayOnly ? "border-white bg-white text-navy font-bold" : "border-white/25 text-white"
+          }`}
+        >
+          Today
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            void loadFiltered(1);
+            onSearch();
+          }}
           className="bg-white px-4 py-2 text-xs font-bold uppercase tracking-wider text-navy"
         >
           Filter History
         </button>
       </div>
 
-      {loading ? (
+      {loading || localLoading ? (
         <TableSkeleton rows={5} />
-      ) : campaigns.length === 0 ? (
+      ) : displayedCampaigns.length === 0 ? (
         <EmptyState
           title="No email campaigns recorded yet"
           description="Emails dispatched from the Admin Email Center will be logged here with delivery telemetry."
@@ -1810,7 +1969,7 @@ export function AdminEmailHistoryView({
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10">
-              {campaigns.map((c) => (
+              {displayedCampaigns.map((c) => (
                 <tr key={c.id} className="hover:bg-white/[0.02]">
                   <td className="px-4 py-3 font-semibold text-white">{c.subject}</td>
                   <td className="px-4 py-3 font-mono text-[10px] text-white/75">

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ROLES, CAMPAIGN_STATUSES, RECIPIENT_MODES } from "../models/index.js";
+import { ROLES, CAMPAIGN_STATUSES, RECIPIENT_MODES, MODERATION_ACTIONS } from "../models/index.js";
 
 export const listUsersQuerySchema = z
   .object({
@@ -116,6 +116,19 @@ export const listEmailCampaignsQuerySchema = z
     status: z.enum(CAMPAIGN_STATUSES).optional(),
     recipientMode: z.enum(RECIPIENT_MODES).optional(),
     search: z.string().trim().max(100).optional(),
+    dateFrom: z.string().trim().max(40).optional(),
+    dateTo: z.string().trim().max(40).optional(),
+    todayOnly: z
+      .enum(["true", "false"])
+      .optional()
+      .transform((v) => v === "true"),
+  })
+  .strict();
+
+export const cleanupEmailHistorySchema = z
+  .object({
+    scope: z.enum(["TODAY", "ALL"]),
+    confirm: z.literal(true),
   })
   .strict();
 
@@ -131,6 +144,72 @@ export const listAuditLogsQuerySchema = z
     limit: z.coerce.number().int().min(1).max(100).optional().default(30),
     category: z.enum(["AUTH", "ADMIN", "SECURITY", "SYSTEM"]).optional(),
     outcome: z.enum(["SUCCESS", "FAILURE", "DENIED"]).optional(),
+    action: z.string().trim().max(80).optional(),
+    user: z.string().trim().max(120).optional(),
+    suspiciousOnly: z
+      .enum(["true", "false"])
+      .optional()
+      .transform((v) => v === "true"),
+    dateFrom: z.string().trim().max(40).optional(),
+    dateTo: z.string().trim().max(40).optional(),
+    todayOnly: z
+      .enum(["true", "false"])
+      .optional()
+      .transform((v) => v === "true"),
     search: z.string().trim().max(100).optional(),
+  })
+  .strict();
+
+export const cleanupAuditLogsSchema = z
+  .object({
+    scope: z.enum(["TODAY", "ALL"]),
+    confirm: z.literal(true),
+    preserveCritical: z.boolean().optional().default(true),
+  })
+  .strict();
+
+export const suspendUserSchema = z
+  .object({
+    duration: z.enum(["1H", "24H", "7D", "30D", "PERMANENT"]),
+    reason: z.string().trim().min(3, "Suspension reason must be at least 3 characters").max(500),
+    notes: z.string().trim().max(1000).optional(),
+  })
+  .strict();
+
+export const reinstateUserSchema = z
+  .object({
+    reason: z.string().trim().max(500).optional(),
+    notes: z.string().trim().max(1000).optional(),
+  })
+  .strict();
+
+export const listModerationHistoryQuerySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).max(1000).optional().default(1),
+    limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+    userId: z.string().regex(/^[a-f\d]{24}$/i, "Invalid user ID").optional(),
+    action: z.enum(MODERATION_ACTIONS).optional(),
+    search: z.string().trim().max(100).optional(),
+  })
+  .strict();
+
+export const updateRetentionSettingsSchema = z
+  .object({
+    emailHistoryDays: z.coerce.number().int().min(1).max(365),
+    auditLogDays: z.coerce.number().int().min(7).max(365),
+    activityLogDays: z.coerce.number().int().min(7).max(365),
+    autoCleanupEnabled: z.boolean(),
+  })
+  .strict();
+
+export const testEmailDeliverabilitySchema = z
+  .object({
+    to: z.string().trim().email("Valid recipient email is required").max(254),
+  })
+  .strict();
+
+export const suppressionIdParamSchema = z
+  .object({
+    id: z.string().regex(/^[a-f\d]{24}$/i, "Invalid suppression ID"),
   })
   .strict();

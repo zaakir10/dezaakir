@@ -19,6 +19,16 @@ export interface IUserPreferences {
   emailNotifications: boolean;
 }
 
+export interface IUserSuspension {
+  type: "TEMPORARY" | "PERMANENT";
+  reason: string;
+  notes?: string;
+  suspendedAt: Date;
+  expiresAt?: Date;
+  suspendedBy?: Types.ObjectId;
+  suspendedByEmail?: string;
+}
+
 export interface IUser {
   _id: Types.ObjectId;
   name: string;
@@ -28,6 +38,7 @@ export interface IUser {
   role: Role;
   emailVerified: boolean;
   status: UserStatus;
+  suspension?: IUserSuspension;
   avatar?: IUserAvatar;
   bio?: string;
   location?: string;
@@ -74,6 +85,21 @@ const UserSchema = new Schema<IUser>(
     role: { type: String, enum: ROLES, default: "USER", required: true },
     emailVerified: { type: Boolean, default: false, required: true },
     status: { type: String, enum: USER_STATUSES, default: "PENDING", required: true },
+    suspension: {
+      type: new Schema<IUserSuspension>(
+        {
+          type: { type: String, enum: ["TEMPORARY", "PERMANENT"], required: true },
+          reason: { type: String, required: true, trim: true, maxlength: 500 },
+          notes: { type: String, trim: true, maxlength: 1000 },
+          suspendedAt: { type: Date, required: true },
+          expiresAt: { type: Date },
+          suspendedBy: { type: Schema.Types.ObjectId, ref: "User" },
+          suspendedByEmail: { type: String, trim: true, lowercase: true, maxlength: 254 },
+        },
+        { _id: false },
+      ),
+      default: undefined,
+    },
     avatar: {
       url: { type: String, trim: true, maxlength: 500000 },
       publicId: { type: String, trim: true, maxlength: 240 },

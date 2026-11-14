@@ -86,8 +86,14 @@ export async function uploadAndRegisterImage(
 
   const dataUriMatch = /^data:([^;]+);base64,([\s\S]+)$/i.exec(rawBase64);
   if (dataUriMatch) {
-    declaredMime = declaredMime ?? dataUriMatch[1];
+    const uriMime = dataUriMatch[1]?.trim().toLowerCase();
+    if (!declaredMime && uriMime && uriMime !== "application/octet-stream") {
+      declaredMime = uriMime;
+    }
     rawBase64 = dataUriMatch[2]!;
+  }
+  if (declaredMime?.trim().toLowerCase() === "application/octet-stream") {
+    declaredMime = undefined;
   }
 
   const buffer = Buffer.from(rawBase64, "base64");
@@ -112,7 +118,16 @@ export async function uploadAndRegisterImage(
     );
 
     if (!uploadRes.ok) {
-      throw new AppError(502, "CLOUDINARY_UPLOAD_FAILED", "Image storage provider rejected the upload");
+      let providerMessage = "Image storage provider rejected the upload";
+      try {
+        const errJson = (await uploadRes.json()) as { error?: { message?: string } };
+        if (errJson?.error?.message) {
+          providerMessage = `Cloudinary upload failed: ${errJson.error.message}`;
+        }
+      } catch {
+        // keep default message
+      }
+      throw new AppError(502, "CLOUDINARY_UPLOAD_FAILED", providerMessage);
     }
 
     const cloudData = (await uploadRes.json()) as {

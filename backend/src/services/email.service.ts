@@ -1,5 +1,7 @@
+import { resolveTxt } from "node:dns/promises";
 import nodemailer, { type Transporter } from "nodemailer";
 import { env, isProduction, isTest } from "../config/env.js";
+import { EmailSuppression } from "../models/index.js";
 import { AppError } from "../utils/AppError.js";
 import { logger } from "../utils/logger.js";
 
@@ -200,10 +202,160 @@ export function renderEmailLayout(title: string, bodyHtml: string, options: Emai
 </html>`;
 }
 
-async function deliverEmail(payload: CapturedEmail, captureBucket: "auth" | "campaign" = "auth"): Promise<void> {
+export function classifyEmailError(err: unknown): {
+  category: "AUTH_ERROR" | "RECIPIENT_REJECTED" | "TRANSIENT_SMTP" | "SUPPRESSED" | "CONFIG_ERROR" | "UNKNOWN";
+  isHardBounce: boolean;
+  isTransient: boolean;
+  safeMessage: string;
+} {
+  if (err instanceof AppError && err.code === "EMAIL_SUPPRESSED") {
+    return {
+      category: "SUPPRESSED",
+      isHardBounce: false,
+      isTransient: false,
+      safeMessage: err.message,
+    };
+  }
+  const msg = err instanceof Error ? err.message : String(err ?? "");
+  const code = (err as { responseCode?: number; code?: string })?.responseCode;
+  const sysCode = (err as { code?: string })?.code ?? "";
+
+  if (code === 535 || /auth|invalid login|username and password/i.test(msg)) {
+    return {
+      category: "AUTH_ERROR",
+      isHardBounce: false,
+      isTransient: false,
+      safeMessage: "SMTP authentication failed",
+    };
+  }
+  if (code === 550 || code === 551 || code === 553 || /5\.1\.1|user unknown|no such user|mailbox unavailable|recipient rejected/i.test(msg)) {
+    return {
+      category: "RECIPIENT_REJECTED",
+      isHardBounce: true,
+      isTransient: false,
+      safeMessage: "Recipient address rejected or undeliverable",
+    };
+  }
+  if (
+    (code && code >= 400 && code < 500) ||
+    /ETIMEDOUT|ECONNRESET|ECONNREFUSED|ESOCKET|rate|try again|temporarily/i.test(`${sysCode} ${msg}`)
+  ) {
+    return {
+      category: "TRANSIENT_SMTP",
+      isHardBounce: false,
+      isTransient: true,
+      safeMessage: "Temporary SMTP delivery failure",
+    };
+  }
+  return {
+    category: "UNKNOWN",
+    isHardBounce: false,
+    isTransient: false,
+    safeMessage: "Email delivery failed",
+  };
+}
+
+function extractSenderEmailAddress(): string {
+  const raw = env.EMAIL_FROM || env.SMTP_USER || "";
+  const match = raw.match(/<([^>]+)>/);
+  return (match?.[1] ?? raw).trim().toLowerCase();
+}
+
+function extractDomain(emailOrUrl: string): string {
+  if (!emailOrUrl) return "";
+  if (emailOrUrl.includes("@")) {
+    return emailOrUrl.split("@")[1]?.trim().toLowerCase() ?? "";
+  }
+  try {
+    return new URL(emailOrUrl).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+const recentEmailDedupe = new Map<string, number>();
+
+async function isAddressSuppressed(email: string): Promise<boolean> {
+  try {
+    const doc = await EmailSuppression.findOne({ email: email.toLowerCase(), suppressed: true }).lean();
+    return Boolean(doc);
+  } catch {
+    return false;
+  }
+}
+
+async function recordDeliveryFailure(email: string, category: string, reason: string, hardBounce: boolean): Promise<void> {
+  try {
+    const normalized = email.toLowerCase().trim();
+    const existing = await EmailSuppression.findOne({ email: normalized });
+    if (!existing) {
+      const shouldSuppress = hardBounce;
+      await EmailSuppression.create({
+        email: normalized,
+        failureCount: 1,
+        suppressed: shouldSuppress,
+        reason: reason.slice(0, 300),
+        lastErrorCategory: category,
+        lastFailedAt: new Date(),
+        ...(shouldSuppress ? { suppressedAt: new Date() } : {}),
+      });
+      return;
+    }
+    const nextCount = existing.failureCount + 1;
+    const shouldSuppress = existing.suppressed || hardBounce || nextCount >= 3;
+    existing.failureCount = nextCount;
+    existing.suppressed = shouldSuppress;
+    existing.reason = reason.slice(0, 300);
+    existing.lastErrorCategory = category;
+    existing.lastFailedAt = new Date();
+    if (shouldSuppress && !existing.suppressedAt) {
+      existing.suppressedAt = new Date();
+    }
+    await existing.save();
+  } catch {
+    // Do not crash email flow if suppression tracking fails
+  }
+}
+
+async function clearAddressFailure(email: string): Promise<void> {
+  try {
+    await EmailSuppression.deleteOne({ email: email.toLowerCase().trim() });
+  } catch {
+    // Non-blocking
+  }
+}
+
+async function deliverEmail(
+  payload: CapturedEmail,
+  captureBucket: "auth" | "campaign" = "auth",
+  options?: { isMarketing?: boolean },
+): Promise<void> {
   // Reject header injection characters in recipient or subject
   if (/[\r\n]/.test(payload.to) || /[\r\n]/.test(payload.subject)) {
     throw AppError.badRequest("Invalid email header");
+  }
+
+  const recipient = payload.to.trim().toLowerCase();
+
+  // Check bounce suppression list before attempting delivery
+  if (await isAddressSuppressed(recipient)) {
+    throw new AppError(400, "EMAIL_SUPPRESSED", "This email address has been suppressed due to repeated delivery bounces");
+  }
+
+  // Duplicate prevention within a 15-second window for identical non-test sends
+  if (!isTest) {
+    const dedupeKey = `${recipient}|${payload.subject}|${captureBucket}`;
+    const lastSent = recentEmailDedupe.get(dedupeKey);
+    const now = Date.now();
+    if (lastSent && now - lastSent < 15_000) {
+      logger.warn({ subject: payload.subject }, "Skipped duplicate email within 15s deduplication window");
+      return;
+    }
+    recentEmailDedupe.set(dedupeKey, now);
+    if (recentEmailDedupe.size > 500) {
+      const oldestKey = recentEmailDedupe.keys().next().value;
+      if (oldestKey) recentEmailDedupe.delete(oldestKey);
+    }
   }
 
   if (isTest) {
@@ -224,19 +376,55 @@ async function deliverEmail(payload: CapturedEmail, captureBucket: "auth" | "cam
     return;
   }
 
-  try {
-    await getTransporter().sendMail({
-      from: env.EMAIL_FROM || env.SMTP_USER,
-      to: payload.to,
-      subject: payload.subject,
-      text: payload.text,
-      html: payload.html,
-    });
-    logger.info({ subject: payload.subject }, "Transactional email sent via Gmail SMTP");
-  } catch (err) {
-    logger.error({ errName: err instanceof Error ? err.name : "SmtpError" }, "Failed to send email via Gmail SMTP");
-    throw new AppError(503, "EMAIL_DELIVERY_FAILED", "Unable to send email at this time. Please try again later.");
+  const fromAddress = env.EMAIL_FROM || env.SMTP_USER;
+  const replyToAddress = extractSenderEmailAddress() || env.SMTP_USER;
+  const siteBase = env.FRONTEND_URL.replace(/\/+$/, "");
+
+  const maxAttempts = 3;
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await getTransporter().sendMail({
+        from: fromAddress,
+        replyTo: replyToAddress,
+        to: payload.to,
+        subject: payload.subject,
+        text: payload.text,
+        html: payload.html,
+        ...(options?.isMarketing
+          ? {
+              headers: {
+                "List-Unsubscribe": `<${siteBase}/account>`,
+                "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+              },
+            }
+          : {}),
+      });
+      await clearAddressFailure(recipient);
+      logger.info({ subject: payload.subject, attempt }, "Transactional email accepted by SMTP server");
+      return;
+    } catch (err) {
+      lastError = err;
+      const classified = classifyEmailError(err);
+      if (classified.isTransient && attempt < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, attempt * 350));
+        continue;
+      }
+      await recordDeliveryFailure(recipient, classified.category, classified.safeMessage, classified.isHardBounce);
+      logger.error(
+        {
+          errName: err instanceof Error ? err.name : "SmtpError",
+          category: classified.category,
+          attempt,
+        },
+        "Failed to send email via SMTP",
+      );
+      throw new AppError(503, "EMAIL_DELIVERY_FAILED", "Unable to send email at this time. Please try again later.");
+    }
   }
+  throw lastError instanceof Error
+    ? lastError
+    : new AppError(503, "EMAIL_DELIVERY_FAILED", "Unable to send email at this time.");
 }
 
 export async function sendVerificationOtpEmail(
@@ -485,26 +673,182 @@ export async function deliverCampaignEmail(params: {
   html: string;
   text: string;
 }): Promise<void> {
-  let lastError: unknown;
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
-      await deliverEmail(
-        {
-          to: params.to,
-          subject: params.subject,
-          html: params.html,
-          text: params.text,
-          meta: isTest ? { type: "campaign" } : undefined,
-        },
-        "campaign",
-      );
-      return;
-    } catch (err) {
-      lastError = err;
-      if (attempt < 2) {
-        await new Promise((resolve) => setTimeout(resolve, 250));
+  await deliverEmail(
+    {
+      to: params.to,
+      subject: params.subject,
+      html: params.html,
+      text: params.text,
+      meta: isTest ? { type: "campaign" } : undefined,
+    },
+    "campaign",
+    { isMarketing: true },
+  );
+}
+
+async function safeLookupTxt(hostname: string): Promise<string[]> {
+  if (!hostname || isTest) return [];
+  try {
+    const records = await Promise.race([
+      resolveTxt(hostname),
+      new Promise<string[][]>((resolve) => setTimeout(() => resolve([]), 3000)),
+    ]);
+    return records.map((chunks) => chunks.join(""));
+  } catch {
+    return [];
+  }
+}
+
+export interface EmailDeliverabilityReport {
+  checkedAt: string;
+  smtp: {
+    host: string;
+    port: number;
+    secure: boolean;
+    tlsMinVersion: string;
+    credentialsConfigured: boolean;
+    connectionVerified: boolean;
+  };
+  sender: {
+    fromAddress: string;
+    senderDomain: string;
+    appDomain: string;
+    domainAligned: boolean;
+  };
+  dns: {
+    spf: { status: "VERIFIED" | "MISSING" | "SKIPPED_IN_TEST"; record: string | null };
+    dkim: { status: "VERIFIED" | "UNVERIFIED" | "SKIPPED_IN_TEST"; selector: string | null; record: string | null };
+    dmarc: { status: "VERIFIED" | "MISSING" | "SKIPPED_IN_TEST"; record: string | null };
+  };
+  suppression: {
+    suppressedCount: number;
+    trackedBounceCount: number;
+  };
+  recommendations: string[];
+  caveat: string;
+}
+
+export async function checkEmailDeliverability(): Promise<EmailDeliverabilityReport> {
+  const fromEmail = extractSenderEmailAddress();
+  const senderDomain = extractDomain(fromEmail);
+  const appDomain = extractDomain(env.FRONTEND_URL);
+  const domainAligned = Boolean(senderDomain && appDomain && (senderDomain === appDomain || senderDomain.endsWith(`.${appDomain}`)));
+
+  const credentialsConfigured = Boolean(env.SMTP_USER && env.SMTP_APP_PASSWORD);
+  const connectionVerified = await verifySmtpConnection();
+
+  let spfStatus: "VERIFIED" | "MISSING" | "SKIPPED_IN_TEST" = isTest ? "SKIPPED_IN_TEST" : "MISSING";
+  let spfRecord: string | null = null;
+  let dkimStatus: "VERIFIED" | "UNVERIFIED" | "SKIPPED_IN_TEST" = isTest ? "SKIPPED_IN_TEST" : "UNVERIFIED";
+  let dkimSelector: string | null = null;
+  let dkimRecord: string | null = null;
+  let dmarcStatus: "VERIFIED" | "MISSING" | "SKIPPED_IN_TEST" = isTest ? "SKIPPED_IN_TEST" : "MISSING";
+  let dmarcRecord: string | null = null;
+
+  if (!isTest && senderDomain) {
+    const [rootTxt, dmarcTxt] = await Promise.all([
+      safeLookupTxt(senderDomain),
+      safeLookupTxt(`_dmarc.${senderDomain}`),
+    ]);
+
+    const spfMatch = rootTxt.find((r) => r.toLowerCase().startsWith("v=spf1"));
+    if (spfMatch) {
+      spfStatus = "VERIFIED";
+      spfRecord = spfMatch;
+    }
+
+    const dmarcMatch = dmarcTxt.find((r) => r.toLowerCase().startsWith("v=dmarc1"));
+    if (dmarcMatch) {
+      dmarcStatus = "VERIFIED";
+      dmarcRecord = dmarcMatch;
+    }
+
+    const selectors = ["google", "default", "selector1", "s1", "k1", "resend"];
+    for (const sel of selectors) {
+      const txt = await safeLookupTxt(`${sel}._domainkey.${senderDomain}`);
+      const match = txt.find((r) => r.toLowerCase().includes("v=dkim1") || r.toLowerCase().includes("p="));
+      if (match) {
+        dkimStatus = "VERIFIED";
+        dkimSelector = sel;
+        dkimRecord = match.slice(0, 140) + (match.length > 140 ? "..." : "");
+        break;
       }
     }
   }
-  throw lastError instanceof Error ? lastError : new Error("Email delivery failed");
+
+  const [suppressedCount, trackedBounceCount] = await Promise.all([
+    EmailSuppression.countDocuments({ suppressed: true }).catch(() => 0),
+    EmailSuppression.countDocuments({}).catch(() => 0),
+  ]);
+
+  const recommendations: string[] = [];
+  if (!domainAligned) {
+    recommendations.push(
+      `Sender domain (${senderDomain || "not set"}) does not match application domain (${appDomain || "dezaakir.com"}). Using a verified domain address like no-reply@${appDomain || "dezaakir.com"} improves DMARC alignment and inbox placement.`,
+    );
+  }
+  if (spfStatus === "MISSING") {
+    recommendations.push(`No SPF TXT record (v=spf1) found for ${senderDomain || "sender domain"}. Publish an SPF record authorizing your mail servers.`);
+  }
+  if (dkimStatus === "UNVERIFIED") {
+    recommendations.push(`No common DKIM selector record found for ${senderDomain || "sender domain"}. Enable DKIM signing in your email provider and publish the CNAME/TXT record in DNS.`);
+  }
+  if (dmarcStatus === "MISSING") {
+    recommendations.push(`No DMARC TXT record found at _dmarc.${senderDomain || "yourdomain.com"}. Add at least "v=DMARC1; p=quarantine; rua=mailto:postmaster@${appDomain || "dezaakir.com"}".`);
+  }
+  if (env.SMTP_HOST.includes("gmail.com")) {
+    recommendations.push(
+      "Gmail SMTP is suitable for low-volume personal/transactional mail (~500/day max), but free Gmail addresses cannot pass custom-domain DMARC alignment. For higher reliability and custom-domain SPF/DKIM/DMARC, consider a dedicated transactional provider with a free tier such as Resend (3,000/mo free) or Brevo (300/day free).",
+    );
+  }
+
+  return {
+    checkedAt: new Date().toISOString(),
+    smtp: {
+      host: env.SMTP_HOST,
+      port: env.SMTP_PORT,
+      secure: env.SMTP_SECURE,
+      tlsMinVersion: "TLSv1.2",
+      credentialsConfigured,
+      connectionVerified,
+    },
+    sender: {
+      fromAddress: env.EMAIL_FROM || env.SMTP_USER || "Not configured",
+      senderDomain,
+      appDomain,
+      domainAligned,
+    },
+    dns: {
+      spf: { status: spfStatus, record: spfRecord },
+      dkim: { status: dkimStatus, selector: dkimSelector, record: dkimRecord },
+      dmarc: { status: dmarcStatus, record: dmarcRecord },
+    },
+    suppression: {
+      suppressedCount,
+      trackedBounceCount,
+    },
+    recommendations,
+    caveat:
+      "SMTP acceptance confirms the mail server accepted the message for delivery; final inbox vs. spam placement is controlled by the recipient's mail provider, DNS alignment, and sender reputation.",
+  };
+}
+
+export async function sendDeliverabilityTestEmail(to: string, requestedByName: string): Promise<{
+  acceptedBySmtp: boolean;
+  recipient: string;
+  sentAt: string;
+  note: string;
+}> {
+  const { html, text } = renderCustomAdminEmail(
+    "Dezaakir Email Deliverability Diagnostic",
+    `<p>This is a live SMTP diagnostic email triggered by <strong>${escapeHtml(requestedByName)}</strong> from the Dezaakir Admin Dashboard.</p><p>If you are reading this in your inbox, TLS-encrypted SMTP transport and basic delivery succeeded. Check message headers (Authentication-Results) to inspect SPF, DKIM, and DMARC alignment.</p>`,
+    requestedByName,
+  );
+  await deliverEmail({ to, subject: "Dezaakir Email Deliverability Diagnostic", html, text, meta: isTest ? { type: "campaign" } : undefined }, "campaign");
+  return {
+    acceptedBySmtp: true,
+    recipient: to,
+    sentAt: new Date().toISOString(),
+    note: "Accepted by SMTP transport. Note: SMTP acceptance does not guarantee inbox placement; verify SPF, DKIM, and DMARC alignment in message headers.",
+  };
 }

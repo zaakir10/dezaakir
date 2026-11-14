@@ -21,6 +21,15 @@ export interface UserPreferences {
   emailNotifications: boolean;
 }
 
+export interface UserSuspension {
+  type: "TEMPORARY" | "PERMANENT";
+  reason: string;
+  notes?: string;
+  suspendedAt: string;
+  expiresAt?: string;
+  suspendedByEmail?: string;
+}
+
 export interface User {
   id: string;
   name: string;
@@ -32,6 +41,7 @@ export interface User {
   role: Role;
   emailVerified: boolean;
   status: UserStatus;
+  suspension?: UserSuspension;
   lastLoginAt?: string;
   passwordChangedAt?: string;
   preferences?: UserPreferences;
@@ -369,4 +379,95 @@ export interface AdminOverviewData {
   }>;
   recentActivity: AuditLogItem[];
   systemStatus?: SystemStatusInfo;
+}
+
+export interface ModerationLogItem {
+  id: string;
+  user: string;
+  userEmail: string;
+  userName: string;
+  action: "SUSPENDED" | "REINSTATED" | "AUTO_REINSTATED";
+  durationType: "1H" | "24H" | "7D" | "30D" | "PERMANENT" | "MANUAL" | "AUTO";
+  reason: string;
+  notes?: string;
+  expiresAt?: string;
+  actorEmail?: string;
+  createdAt: string;
+}
+
+export interface RetentionSettingsData {
+  emailHistoryDays: number;
+  auditLogDays: number;
+  activityLogDays: number;
+  autoCleanupEnabled: boolean;
+}
+
+export interface RetentionOverviewData {
+  retention: RetentionSettingsData;
+  collections: {
+    emailCampaigns: number;
+    auditLogs: number;
+    moderationLogs: number;
+    users: number;
+    sessions: number;
+    blogs: number;
+    projects: number;
+    contactMessages: number;
+    suppressedEmails: number;
+  };
+}
+
+export interface EmailDeliverabilityReport {
+  checkedAt: string;
+  smtp: {
+    host: string;
+    port: number;
+    secure: boolean;
+    tlsMinVersion: string;
+    credentialsConfigured: boolean;
+    connectionVerified: boolean;
+  };
+  sender: {
+    fromAddress: string;
+    senderDomain: string;
+    appDomain: string;
+    domainAligned: boolean;
+  };
+  dns: {
+    spf: { status: "VERIFIED" | "MISSING" | "SKIPPED_IN_TEST"; record: string | null };
+    dkim: { status: "VERIFIED" | "UNVERIFIED" | "SKIPPED_IN_TEST"; selector: string | null; record: string | null };
+    dmarc: { status: "VERIFIED" | "MISSING" | "SKIPPED_IN_TEST"; record: string | null };
+  };
+  suppression: {
+    suppressedCount: number;
+    trackedBounceCount: number;
+  };
+  recommendations: string[];
+  caveat: string;
+}
+
+export interface SuspiciousActivityData {
+  thresholds: {
+    failedLoginLockoutThreshold: number;
+    otpMaxAttemptsThreshold: number;
+    windowMinutes: number;
+  };
+  summary24h: {
+    failedLogins: number;
+    unauthorizedAdminAttempts: number;
+    accountLockouts: number;
+    currentlySuspendedUsers: number;
+  };
+  events: AuditLogItem[];
+}
+
+export interface EmailSuppressionItem {
+  id: string;
+  email: string;
+  failureCount: number;
+  suppressed: boolean;
+  reason: string;
+  lastErrorCategory: string;
+  lastFailedAt: string;
+  suppressedAt?: string;
 }

@@ -1,7 +1,8 @@
 "use client";
 
 import { BrandLogo } from "@/components/ui/BrandLogo";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api";
 import {
   Activity,
   CheckCircle2,
@@ -1151,6 +1152,8 @@ export function AdminAuditLogsView({
   setActionSearch,
   onSearch,
   onPageChange,
+  onToast,
+  onConfirm,
 }: {
   logs: AuditLogItem[];
   meta: PaginationMeta;
@@ -1163,22 +1166,197 @@ export function AdminAuditLogsView({
   setActionSearch: (v: string) => void;
   onSearch: () => void;
   onPageChange: (page: number) => void;
+  onToast?: (type: "success" | "error", text: string) => void;
+  onConfirm?: (cfg: {
+    title: string;
+    description: string;
+    confirmLabel?: string;
+    onConfirm: () => Promise<void> | void;
+  }) => void;
 }) {
+  const [userFilter, setUserFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [todayOnly, setTodayOnly] = useState(false);
+  const [suspiciousOnly, setSuspiciousOnly] = useState(false);
+  const [preserveCritical, setPreserveCritical] = useState(true);
+  const [filteredLogs, setFilteredLogs] = useState<AuditLogItem[] | null>(null);
+  const [totalStored, setTotalStored] = useState<number | null>(null);
+  const [suspiciousCount, setSuspiciousCount] = useState<number | null>(null);
+  const [localLoading, setLocalLoading] = useState(false);
+
+  const buildQuery = useCallback(
+    (targetPage = 1) =>
+      new URLSearchParams({
+        page: String(targetPage),
+        limit: "30",
+        ...(categoryFilter ? { category: categoryFilter } : {}),
+        ...(outcomeFilter ? { outcome: outcomeFilter } : {}),
+        ...(actionSearch.trim() ? { search: actionSearch.trim() } : {}),
+        ...(userFilter.trim() ? { user: userFilter.trim() } : {}),
+        ...(suspiciousOnly ? { suspiciousOnly: "true" } : {}),
+        ...(todayOnly ? { todayOnly: "true" } : {}),
+        ...(dateFrom && !todayOnly ? { dateFrom } : {}),
+        ...(dateTo && !todayOnly ? { dateTo } : {}),
+      }),
+    [categoryFilter, outcomeFilter, actionSearch, userFilter, suspiciousOnly, todayOnly, dateFrom, dateTo],
+  );
+
+  const loadFiltered = useCallback(
+    async (targetPage = 1) => {
+      setLocalLoading(true);
+      try {
+        const res = await apiFetch<{
+          logs: AuditLogItem[];
+          totalStoredRecords?: number;
+          suspiciousCount?: number;
+        }>(`/api/admin/audit-logs?${buildQuery(targetPage).toString()}`);
+        setFilteredLogs(res.data.logs);
+        if (typeof res.data.totalStoredRecords === "number") {
+          setTotalStored(res.data.totalStoredRecords);
+        }
+        if (typeof res.data.suspiciousCount === "number") {
+          setSuspiciousCount(res.data.suspiciousCount);
+        }
+      } catch (err) {
+        onToast?.("error", err instanceof Error ? err.message : "Failed to load audit logs");
+      } finally {
+        setLocalLoading(false);
+      }
+    },
+    [buildQuery, onToast],
+  );
+
+  useEffect(() => {
+    void loadFiltered(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const displayedLogs = filteredLogs ?? logs;
+
+  const handleExport = async () => {
+    try {
+      const res = await apiFetch<Record<string, unknown>>(`/api/admin/audit-logs/export?${buildQuery(1).toString()}`);
+      const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `dezaakir-audit-logs-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      onToast?.("success", "Audit logs exported to JSON.");
+    } catch (err) {
+      onToast?.("error", err instanceof Error ? err.message : "Failed to export audit logs");
+    }
+  };
+
+  const triggerCleanup = (scope: "TODAY" | "ALL") => {
+    const run = async () => {
+      try {
+        const res = await apiFetch<{ deletedCount: number; remainingCount: number }>(
+          "/api/admin/audit-logs/cleanup",
+          {
+            method: "POST",
+            body: JSON.stringify({ scope, confirm: true, preserveCritical }),
+          },
+        );
+        onToast?.(
+          "success",
+          `Deleted ${res.data.deletedCount} audit log(s). Remaining: ${res.data.remainingCount}.`,
+        );
+        await loadFiltered(1);
+        onSearch();
+      } catch (err) {
+        onToast?.("error", err instanceof Error ? err.message : "Failed to delete audit logs");
+      }
+    };
+
+    if (onConfirm) {
+      onConfirm({
+        title: scope === "TODAY" ? "Delete Today's Audit Logs?" : "Delete All Audit Logs?",
+        description: preserveCritical
+          ? `Removes ${scope === "TODAY" ? "today's" : "all"} routine audit records while preserving HIGH-severity security evidence.`
+          : `Permanently deletes ${scope === "TODAY" ? "today's" : "ALL"} audit logs including critical security events.`,
+        confirmLabel: scope === "TODAY" ? "Delete Today's Logs" : "Delete All Logs",
+        onConfirm: run,
+      });
+    } else {
+      void run();
+    }
+  };
+
   return (
     <div className="space-y-5">
+      {/* Storage & Retention Control Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border border-white/15 bg-white/[0.02] p-4">
+        <div className="flex flex-wrap items-center gap-4 text-xs text-white/80">
+          <span>
+            <span className="font-mono text-[10px] uppercase text-white/60">Stored Audit Records:</span>{" "}
+            <strong className="font-mono text-white">{totalStored ?? meta.total}</strong>
+          </span>
+          {suspiciousCount !== null && (
+            <span>
+              <span className="font-mono text-[10px] uppercase text-white/60">Flagged Suspicious:</span>{" "}
+              <strong className="font-mono text-white">{suspiciousCount}</strong>
+            </span>
+          )}
+          <label className="inline-flex items-center gap-2 text-[11px] text-white/75">
+            <input
+              type="checkbox"
+              checked={preserveCritical}
+              onChange={(e) => setPreserveCritical(e.target.checked)}
+              className="h-3.5 w-3.5 accent-white"
+            />
+            Preserve critical security evidence
+          </label>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void handleExport()}
+            className="border border-white/30 px-3 py-1.5 font-mono text-[10px] uppercase text-white hover:bg-white/10"
+          >
+            Export JSON
+          </button>
+          <button
+            type="button"
+            onClick={() => triggerCleanup("TODAY")}
+            className="border border-white/30 px-3 py-1.5 font-mono text-[10px] uppercase text-white hover:bg-white/10"
+          >
+            Delete Today&apos;s Audit Logs
+          </button>
+          <button
+            type="button"
+            onClick={() => triggerCleanup("ALL")}
+            className="border border-white bg-white px-3 py-1.5 font-mono text-[10px] font-bold uppercase text-navy hover:bg-white/90"
+          >
+            Delete All Audit Logs
+          </button>
+        </div>
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-3 border border-white/15 bg-white/[0.02] p-4">
         <div className="flex flex-1 flex-wrap items-center gap-2.5">
-          <div className="relative min-w-[220px] flex-1">
+          <div className="relative min-w-[200px] flex-1">
             <Search className="pointer-events-none absolute top-2.5 left-3 h-3.5 w-3.5 text-white/50" />
             <input
               type="text"
               value={actionSearch}
               onChange={(e) => setActionSearch(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && onSearch()}
-              placeholder="Filter by action code (e.g. BLOG_CREATE, AUTH_LOGIN_SUCCESS)..."
+              onKeyDown={(e) => e.key === "Enter" && void loadFiltered(1)}
+              placeholder="Search action, actor, target, IP..."
               className="w-full border border-white/20 bg-navy py-2 pr-3 pl-8 text-xs text-white focus:border-white focus:outline-none"
             />
           </div>
+
+          <input
+            type="text"
+            value={userFilter}
+            onChange={(e) => setUserFilter(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && void loadFiltered(1)}
+            placeholder="Filter by user email..."
+            className="border border-white/20 bg-navy px-3 py-2 text-xs text-white focus:border-white focus:outline-none"
+          />
 
           <select
             value={categoryFilter}
@@ -1203,9 +1381,49 @@ export function AdminAuditLogsView({
             <option value="DENIED">DENIED</option>
           </select>
 
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => {
+              setTodayOnly(false);
+              setDateFrom(e.target.value);
+            }}
+            className="border border-white/20 bg-navy px-2.5 py-1.5 text-xs text-white focus:border-white focus:outline-none"
+          />
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => {
+              setTodayOnly(false);
+              setDateTo(e.target.value);
+            }}
+            className="border border-white/20 bg-navy px-2.5 py-1.5 text-xs text-white focus:border-white focus:outline-none"
+          />
           <button
             type="button"
-            onClick={onSearch}
+            onClick={() => setTodayOnly((v) => !v)}
+            className={`border px-2.5 py-2 font-mono text-[10px] uppercase ${
+              todayOnly ? "border-white bg-white text-navy font-bold" : "border-white/25 text-white"
+            }`}
+          >
+            Today
+          </button>
+          <button
+            type="button"
+            onClick={() => setSuspiciousOnly((v) => !v)}
+            className={`border px-2.5 py-2 font-mono text-[10px] uppercase ${
+              suspiciousOnly ? "border-white bg-white text-navy font-bold" : "border-white/25 text-white"
+            }`}
+          >
+            Suspicious
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              void loadFiltered(1);
+              onSearch();
+            }}
             className="bg-white px-4 py-2 text-xs font-bold tracking-wider text-navy uppercase transition hover:bg-white/90"
           >
             Apply Filters
@@ -1213,9 +1431,9 @@ export function AdminAuditLogsView({
         </div>
       </div>
 
-      {loading ? (
+      {loading || localLoading ? (
         <TableSkeleton rows={7} />
-      ) : logs.length === 0 ? (
+      ) : displayedLogs.length === 0 ? (
         <EmptyState
           title="No matching audit events"
           description="No security or administrative events matched your current filter criteria."
@@ -1235,7 +1453,7 @@ export function AdminAuditLogsView({
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10 font-mono text-[11px]">
-              {logs.map((log) => (
+              {displayedLogs.map((log) => (
                 <tr key={log.id} className="hover:bg-white/[0.02]">
                   <td className="px-4 py-3 whitespace-nowrap text-white/65">
                     {new Date(log.createdAt).toLocaleString()}

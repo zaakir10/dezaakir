@@ -164,6 +164,50 @@ export async function fileToBase64DataUrl(file: File): Promise<string> {
   });
 }
 
+const MAX_DIRECT_UPLOAD_BYTES = 2.2 * 1024 * 1024; // ~2.9MB base64, safely under Vercel's 4.5MB body limit
+
+async function compressRasterImage(file: File): Promise<{ dataUrl: string; mimeType: string }> {
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error("Failed to decode image for upload"));
+      el.src = objectUrl;
+    });
+
+    const maxDimension = 2048;
+    const scale = Math.min(1, maxDimension / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
+    const width = Math.max(1, Math.round((img.naturalWidth || 1) * scale));
+    const height = Math.max(1, Math.round((img.naturalHeight || 1) * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("Canvas context unavailable");
+    }
+    ctx.drawImage(img, 0, 0, width, height);
+
+    const outputMime = file.type === "image/png" ? "image/webp" : "image/jpeg";
+    let quality = 0.86;
+    let dataUrl = canvas.toDataURL(outputMime, quality);
+
+    while (dataUrl.length > 3_500_000 && quality > 0.5) {
+      quality -= 0.12;
+      dataUrl = canvas.toDataURL("image/jpeg", quality);
+    }
+
+    return {
+      dataUrl,
+      mimeType: dataUrl.startsWith("data:image/webp") ? "image/webp" : "image/jpeg",
+    };
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 export async function apiUploadMediaFile<T = { media: import("@/types").MediaItem }>(
   file: File,
   options: {
@@ -172,7 +216,21 @@ export async function apiUploadMediaFile<T = { media: import("@/types").MediaIte
     caption?: string;
   }
 ): Promise<ApiSuccess<T>> {
-  const fileBase64 = await fileToBase64DataUrl(file);
+  let fileBase64: string;
+  let mimeType: string | undefined = file.type && file.type.startsWith("image/") ? file.type : undefined;
+
+  if (file.size > MAX_DIRECT_UPLOAD_BYTES && file.type !== "image/gif" && typeof document !== "undefined") {
+    try {
+      const compressed = await compressRasterImage(file);
+      fileBase64 = compressed.dataUrl;
+      mimeType = compressed.mimeType;
+    } catch {
+      fileBase64 = await fileToBase64DataUrl(file);
+    }
+  } else {
+    fileBase64 = await fileToBase64DataUrl(file);
+  }
+
   const normalizedFolder = options.folder.startsWith("dezaakir/")
     ? options.folder
     : `dezaakir/${options.folder}`;
@@ -180,7 +238,7 @@ export async function apiUploadMediaFile<T = { media: import("@/types").MediaIte
     method: "POST",
     body: JSON.stringify({
       fileBase64,
-      mimeType: file.type || "image/png",
+      ...(mimeType ? { mimeType } : {}),
       folder: normalizedFolder,
       alt: options.alt || file.name,
       caption: options.caption,

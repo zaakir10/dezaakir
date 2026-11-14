@@ -3,6 +3,7 @@ import type { RequestHandler } from "express";
 import { env } from "../config/env.js";
 import { Session, User, type ISession, type IUser, type Role } from "../models/index.js";
 import { recordAudit } from "../services/audit.service.js";
+import { evaluateUserSuspension, formatSuspensionMessage } from "../services/moderation.service.js";
 import { AppError } from "../utils/AppError.js";
 import { clearSessionCookie, getSessionCookie } from "../utils/cookies.js";
 import { hashToken } from "../utils/crypto.js";
@@ -56,8 +57,17 @@ export const loadSession: RequestHandler = async (req, res, next) => {
       return next();
     }
 
-    const user = await User.findById(session.user).lean<IUser>();
-    if (!user || user.status !== "ACTIVE" || !user.emailVerified) {
+    const rawUser = await User.findById(session.user).lean<IUser>();
+    if (!rawUser) {
+      await Session.updateOne({ _id: session._id }, { $set: { revokedAt: now } });
+      clearSessionCookie(res);
+      return next();
+    }
+
+    const suspensionCheck = await evaluateUserSuspension(rawUser, req);
+    const user = suspensionCheck.user;
+
+    if (suspensionCheck.suspended || user.status !== "ACTIVE" || !user.emailVerified) {
       await Session.updateOne({ _id: session._id }, { $set: { revokedAt: now } });
       clearSessionCookie(res);
       return next();
@@ -81,6 +91,9 @@ export const loadSession: RequestHandler = async (req, res, next) => {
 export const requireAuth: RequestHandler = (req, _res, next) => {
   if (!req.user || !req.session) {
     return next(AppError.unauthorized("Authentication required"));
+  }
+  if (req.user.status === "SUSPENDED") {
+    return next(new AppError(403, "ACCOUNT_SUSPENDED", formatSuspensionMessage(req.user)));
   }
   if (!req.user.emailVerified || req.user.status !== "ACTIVE") {
     return next(AppError.forbidden("Account is not active"));

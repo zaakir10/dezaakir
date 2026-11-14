@@ -54,6 +54,12 @@ export interface ISiteSettings {
   education: Education[];
   careerInterests: string[];
   seo: { defaultTitle: string; defaultDescription: string; ogImage?: ImageRef };
+  retention: {
+    emailHistoryDays: number;
+    auditLogDays: number;
+    activityLogDays: number;
+    autoCleanupEnabled: boolean;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -143,6 +149,12 @@ const SiteSettingsSchema = new Schema<ISiteSettings, SiteSettingsModel>(
         default: "Portfolio and technology blog of Dezaakir: full-stack development, AI and modern technology.",
       },
       ogImage: { type: ImageSchema },
+    },
+    retention: {
+      emailHistoryDays: { type: Number, default: 30, min: 1, max: 365 },
+      auditLogDays: { type: Number, default: 90, min: 7, max: 365 },
+      activityLogDays: { type: Number, default: 60, min: 7, max: 365 },
+      autoCleanupEnabled: { type: Boolean, default: true },
     },
   },
   baseOptions<ISiteSettings>(),

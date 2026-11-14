@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Calendar, Clock, List, User as UserIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, Calendar, Clock, List, User as UserIcon } from "lucide-react";
+import { ArticleEnhancer } from "@/components/ui/ArticleEnhancer";
 import { BlogCard } from "@/components/ui/BlogCard";
+import { ReadingProgressBar } from "@/components/ui/ReadingProgressBar";
 import { ShareArticleBar } from "@/components/ui/ShareArticleBar";
-import { fetchPublicBlogBySlug } from "@/lib/api";
+import { fetchPublicBlogBySlug, fetchPublicBlogs } from "@/lib/api";
 import { sanitizeHtmlForRender } from "@/lib/sanitizeHtmlClient";
 import { siteConfig } from "@/lib/site";
 
@@ -85,7 +87,10 @@ export async function generateMetadata({ params }: BlogDetailProps): Promise<Met
 
 export default async function BlogDetailPage({ params }: BlogDetailProps) {
   const { slug } = await params;
-  const result = await fetchPublicBlogBySlug(slug);
+  const [result, archiveList] = await Promise.all([
+    fetchPublicBlogBySlug(slug),
+    fetchPublicBlogs({ limit: 24 }),
+  ]);
   if (!result) {
     notFound();
   }
@@ -93,6 +98,14 @@ export default async function BlogDetailPage({ params }: BlogDetailProps) {
   const { blog, related } = result;
   const rawSafeHtml = sanitizeHtmlForRender(blog.content);
   const { html: htmlWithIds, toc } = buildArticleTocAndHtml(rawSafeHtml);
+
+  const currentIdx = archiveList.blogs.findIndex((b) => b.slug === blog.slug);
+  const previousArticle =
+    currentIdx >= 0 && currentIdx + 1 < archiveList.blogs.length
+      ? archiveList.blogs[currentIdx + 1]
+      : undefined;
+  const nextArticle =
+    currentIdx > 0 ? archiveList.blogs[currentIdx - 1] : undefined;
 
   const authorName =
     typeof blog.author === "object" && blog.author?.name ? blog.author.name : "Dezaakir";
@@ -123,76 +136,85 @@ export default async function BlogDetailPage({ params }: BlogDetailProps) {
 
   return (
     <main className="bg-navy text-white">
+      <ReadingProgressBar />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
 
       {/* ================================================================= */}
-      {/* 1. ARTICLE EDITORIAL HEADER                                       */}
+      {/* 1. EDITORIAL ARTICLE HEADER                                       */}
       {/* ================================================================= */}
-      <header className="border-b border-white/15">
+      <header className="bg-editorial-grid border-b border-white/15">
         <div className="mx-auto max-w-5xl px-6 py-16 sm:py-24">
           <Link
             href="/blog"
-            className="inline-flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-white/70 transition hover:text-white"
+            className="inline-flex items-center gap-2 font-mono text-xs uppercase tracking-[0.18em] text-white/65 transition hover:text-white"
           >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            <span>Back to Technology Magazine</span>
+            <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+            <span>Back to Engineering Dispatch</span>
           </Link>
 
           <div className="mt-8 flex flex-wrap items-center gap-3 font-mono text-xs text-white/75">
             {blog.category?.name && (
               <Link
                 href={`/blog?category=${encodeURIComponent(blog.category.slug)}`}
-                className="bg-white px-3 py-1 font-bold uppercase text-navy transition hover:bg-white/90"
+                className="bg-white px-3 py-1 font-bold uppercase tracking-wider text-navy transition hover:bg-white/90"
               >
                 {blog.category.name}
               </Link>
             )}
             <span className="inline-flex items-center gap-1.5 border border-white/20 px-3 py-1">
-              <Clock className="h-3.5 w-3.5" />
+              <Clock className="h-3.5 w-3.5" aria-hidden="true" />
               {blog.readingTime || 1} min read
             </span>
             <span className="inline-flex items-center gap-1.5 border border-white/20 px-3 py-1">
-              <Calendar className="h-3.5 w-3.5" />
+              <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
               {publishedDate}
-            </span>
-            <span className="inline-flex items-center gap-1.5 border border-white/20 px-3 py-1">
-              <UserIcon className="h-3.5 w-3.5" />
-              {authorName}
             </span>
           </div>
 
-          <h1 className="mt-6 text-3xl font-bold leading-[1.12] tracking-tight text-white sm:text-5xl lg:text-6xl">
+          <h1 className="mt-6 text-3xl font-bold leading-[1.08] tracking-tight text-white sm:text-5xl lg:text-6xl">
             {blog.title}
           </h1>
 
-          <p className="mt-6 max-w-3xl text-lg leading-relaxed text-white/80">
+          <p className="mt-6 max-w-3xl text-lg leading-relaxed text-white/80 sm:text-xl">
             {blog.excerpt}
           </p>
 
-          {blog.tags && blog.tags.length > 0 && (
-            <div className="mt-7 flex flex-wrap gap-2">
-              {blog.tags.map((tag) => (
-                <Link
-                  key={tag.id || tag.slug}
-                  href={`/blog?tag=${encodeURIComponent(tag.slug)}`}
-                  className="border border-white/15 bg-white/[0.03] px-3 py-1 font-mono text-xs text-white/80 transition hover:border-white hover:text-white"
-                >
-                  #{tag.name}
-                </Link>
-              ))}
+          <div className="mt-8 flex flex-wrap items-center justify-between gap-4 border-t border-white/15 pt-6 font-mono text-xs">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center border border-white/25 bg-navy">
+                <UserIcon className="h-4 w-4 text-white" aria-hidden="true" />
+              </div>
+              <div>
+                <p className="font-bold text-white">{authorName}</p>
+                <p className="text-[11px] text-white/55">Dezaakir Publication</p>
+              </div>
             </div>
-          )}
+
+            {blog.tags && blog.tags.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {blog.tags.map((tag) => (
+                  <Link
+                    key={tag.id || tag.slug}
+                    href={`/blog?tag=${encodeURIComponent(tag.slug)}`}
+                    className="border border-white/15 px-2.5 py-1 text-[11px] text-white/75 transition hover:border-white hover:text-white"
+                  >
+                    #{tag.name}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
       {/* ================================================================= */}
-      {/* 2. FEATURED COVER IMAGE                                           */}
+      {/* 2. COVER IMAGE                                                    */}
       {/* ================================================================= */}
       {blog.coverImage?.url && (
-        <section className="border-b border-white/15 bg-white/[0.01]">
+        <section className="border-b border-white/15">
           <div className="mx-auto max-w-5xl px-6 py-10">
             <div className="relative aspect-video w-full overflow-hidden border border-white/20 bg-navy">
               <Image
@@ -209,107 +231,120 @@ export default async function BlogDetailPage({ params }: BlogDetailProps) {
       )}
 
       {/* ================================================================= */}
-      {/* 3. ARTICLE BODY + TABLE OF CONTENTS + SOCIAL SHARING              */}
+      {/* 3. LONG-FORM READING BODY & TABLE OF CONTENTS                     */}
       {/* ================================================================= */}
-      <section className="mx-auto max-w-5xl px-6 py-16 sm:py-20">
-        <div className="grid gap-12 lg:grid-cols-12">
-          {/* Main Reading Column */}
-          <div className={toc.length > 0 ? "lg:col-span-8" : "lg:col-span-10 lg:col-start-2"}>
-            <div
-              className="article-content"
-              dangerouslySetInnerHTML={{ __html: htmlWithIds }}
-            />
-
-            <div className="mt-14">
-              <ShareArticleBar title={blog.title} url={canonicalUrl} />
-            </div>
-
-            {/* Author Bio Box */}
-            <div className="mt-10 flex flex-col justify-between gap-4 border border-white/15 bg-white/[0.02] p-6 sm:flex-row sm:items-center">
-              <div className="flex items-center gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center border border-white/20 bg-navy p-2">
-                  <Image
-                    src="/logo.png"
-                    alt="Dezaakir"
-                    width={32}
-                    height={32}
-                    className="h-7 w-auto object-contain"
-                  />
+      <article className="mx-auto max-w-5xl px-6 py-14 sm:py-20">
+        <div className={toc.length >= 2 ? "grid gap-12 lg:grid-cols-12" : "mx-auto max-w-[68ch]"}>
+          {toc.length >= 2 && (
+            <aside className="min-w-0 lg:col-span-4">
+              <div className="sticky top-28 border border-white/15 bg-white/[0.015] p-6">
+                <div className="flex items-center gap-2 border-b border-white/10 pb-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-white">
+                  <List className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>Contents</span>
                 </div>
-                <div>
-                  <p className="font-mono text-[10px] uppercase tracking-widest text-white/55">
-                    Written By
-                  </p>
-                  <p className="text-base font-bold text-white">{authorName}</p>
-                  <p className="text-xs text-white/70">
-                    Full-Stack Software Developer & Technology Writer
-                  </p>
-                </div>
-              </div>
-              <Link
-                href="/about"
-                className="border border-white/25 px-4 py-2 font-mono text-xs uppercase tracking-wider text-white transition hover:border-white"
-              >
-                Author Profile →
-              </Link>
-            </div>
-          </div>
-
-          {/* Sticky Table of Contents Sidebar (when headings exist) */}
-          {toc.length > 0 && (
-            <aside className="lg:col-span-4">
-              <div className="sticky top-28 border border-white/15 bg-white/[0.02] p-6">
-                <div className="flex items-center gap-2 border-b border-white/10 pb-3 font-mono text-xs font-bold uppercase tracking-wider text-white">
-                  <List className="h-4 w-4" />
-                  <span>Table of Contents</span>
-                </div>
-                <nav aria-label="Table of contents" className="mt-4">
-                  <ul className="space-y-2.5 text-xs">
-                    {toc.map((item) => (
-                      <li key={item.id} className={item.level === 3 ? "pl-4" : ""}>
-                        <a
-                          href={`#${item.id}`}
-                          className="block leading-snug text-white/70 transition hover:text-white"
-                        >
-                          {item.text}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
+                <nav aria-label="Table of contents" className="mt-4 space-y-2.5 text-sm">
+                  {toc.map((heading) => (
+                    <a
+                      key={heading.id}
+                      href={`#${heading.id}`}
+                      className={`block leading-snug text-white/65 transition hover:text-white ${
+                        heading.level === 3 ? "pl-4 text-xs" : "font-medium"
+                      }`}
+                    >
+                      {heading.text}
+                    </a>
+                  ))}
                 </nav>
               </div>
             </aside>
           )}
-        </div>
 
-        {/* Related Articles */}
-        {related.length > 0 && (
-          <div className="mt-20 border-t border-white/15 pt-16">
-            <div className="flex items-center justify-between">
+          <div className={toc.length >= 2 ? "min-w-0 lg:col-span-8" : "min-w-0"}>
+            <div
+              id="blog-article-body"
+              className="article-content max-w-[68ch]"
+              dangerouslySetInnerHTML={{ __html: htmlWithIds }}
+            />
+            <ArticleEnhancer containerId="blog-article-body" />
+
+            <div className="mt-14 max-w-[68ch]">
+              <ShareArticleBar title={blog.title} url={canonicalUrl} />
+            </div>
+
+            {/* Previous & Next Article Navigation */}
+            {(previousArticle || nextArticle) && (
+              <nav
+                aria-label="Article navigation"
+                className="mt-10 grid max-w-[68ch] gap-4 border-t border-white/15 pt-8 sm:grid-cols-2"
+              >
+                {previousArticle ? (
+                  <Link
+                    href={`/blog/${previousArticle.slug}`}
+                    className="group border border-white/15 p-5 transition hover:border-white/45"
+                  >
+                    <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.2em] text-white/50">
+                      <ArrowLeft className="h-3 w-3" aria-hidden="true" />
+                      <span>Previous Article</span>
+                    </span>
+                    <p className="mt-2 line-clamp-2 text-sm font-bold text-white group-hover:underline group-hover:underline-offset-4">
+                      {previousArticle.title}
+                    </p>
+                  </Link>
+                ) : (
+                  <div />
+                )}
+
+                {nextArticle && (
+                  <Link
+                    href={`/blog/${nextArticle.slug}`}
+                    className="group border border-white/15 p-5 text-right transition hover:border-white/45"
+                  >
+                    <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.2em] text-white/50">
+                      <span>Next Article</span>
+                      <ArrowRight className="h-3 w-3" aria-hidden="true" />
+                    </span>
+                    <p className="mt-2 line-clamp-2 text-sm font-bold text-white group-hover:underline group-hover:underline-offset-4">
+                      {nextArticle.title}
+                    </p>
+                  </Link>
+                )}
+              </nav>
+            )}
+          </div>
+        </div>
+      </article>
+
+      {/* ================================================================= */}
+      {/* 4. RELATED ARTICLES                                               */}
+      {/* ================================================================= */}
+      {related.length > 0 && (
+        <section className="border-t border-white/15">
+          <div className="mx-auto max-w-6xl px-6 py-16 sm:py-20">
+            <div className="flex items-end justify-between border-b border-white/15 pb-6">
               <div>
-                <p className="font-mono text-xs uppercase tracking-widest text-white/55">
-                  Further Reading
+                <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-white/50">
+                  Continue Reading
                 </p>
                 <h2 className="mt-2 text-2xl font-bold tracking-tight text-white sm:text-3xl">
-                  Related Articles
+                  Related Dispatches
                 </h2>
               </div>
               <Link
                 href="/blog"
-                className="font-mono text-xs uppercase tracking-wider text-white/75 hover:text-white"
+                className="font-mono text-xs font-bold uppercase tracking-wider text-white/75 hover:text-white"
               >
                 All Articles →
               </Link>
             </div>
 
-            <div className="mt-8 grid gap-8 md:grid-cols-2">
+            <div className="mt-10 grid gap-8 md:grid-cols-2 lg:grid-cols-3">
               {related.map((item) => (
                 <BlogCard key={item.id} article={item} />
               ))}
             </div>
           </div>
-        )}
-      </section>
+        </section>
+      )}
     </main>
   );
 }

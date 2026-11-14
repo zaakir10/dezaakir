@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ArrowUpRight, Mail, MapPin } from "lucide-react";
+import { BackToTopButton } from "@/components/ui/BackToTopButton";
 import { BrandLogo } from "@/components/ui/BrandLogo";
 import { DEFAULT_SITE_SETTINGS } from "@/lib/api";
 import { siteConfig } from "@/lib/site";
@@ -73,85 +74,56 @@ export function Footer() {
   const social = settings.socialLinks || {};
   const socialEntries = [
     { label: "GitHub", href: social.github || "https://github.com/zaakir10" },
-    { label: "Facebook", href: social.facebook || "https://facebook.com/dezaakir" },
-    { label: "TikTok", href: social.tiktok || "https://tiktok.com/@dezaakir" },
     ...(social.linkedin ? [{ label: "LinkedIn", href: social.linkedin }] : []),
     ...(social.x ? [{ label: "X / Twitter", href: social.x }] : []),
+    ...(social.facebook ? [{ label: "Facebook", href: social.facebook }] : []),
+    ...(social.tiktok ? [{ label: "TikTok", href: social.tiktok }] : []),
   ];
 
   return (
     <footer className="border-t border-white/15 bg-navy text-white">
-      {/* Upper Architectural Callout Bar */}
-      <div className="border-b border-white/10 bg-white/[0.015]">
-        <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-6 px-6 py-10 sm:flex-row sm:items-center">
-          <div>
-            <p className="font-mono text-[11px] uppercase tracking-widest text-white/60">
-              Engineering & Collaboration
-            </p>
-            <h2 className="mt-1.5 text-xl font-bold tracking-tight text-white sm:text-2xl">
-              Building Digital Experiences Through Code & Technology.
-            </h2>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <Link
-              href="/projects"
-              className="border border-white/25 px-5 py-2.5 text-xs font-semibold uppercase tracking-wider text-white transition hover:border-white"
-            >
-              View Portfolio
-            </Link>
-            <Link
-              href="/contact"
-              className="inline-flex items-center gap-1.5 bg-white px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-navy transition hover:bg-white/90"
-            >
-              <span>Get in Touch</span>
-              <ArrowUpRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
-        </div>
-      </div>
-
-      {/* Main 4-Column Editorial Footer Grid */}
-      <div className="mx-auto max-w-6xl px-6 py-16">
+      {/* Main Editorial Footer Directory */}
+      <div className="mx-auto max-w-6xl px-6 py-16 sm:py-20">
         <div className="grid gap-12 sm:grid-cols-2 lg:grid-cols-12">
-          {/* 1. Brand Section */}
-          <div className="lg:col-span-4">
+          {/* 1. Brand & Positioning */}
+          <div className="lg:col-span-5">
             <Link href="/" className="inline-flex items-center gap-3.5">
               <BrandLogo className="h-9" />
               <div>
                 <span className="block text-lg font-bold tracking-tight text-white">
                   {settings.siteTitle || "Dezaakir"}
                 </span>
-                <span className="block font-mono text-[10px] uppercase tracking-widest text-white/55">
-                  Developer Portfolio & Publication
+                <span className="block font-mono text-[10px] uppercase tracking-[0.2em] text-white/50">
+                  Software Engineering & Publication
                 </span>
               </div>
             </Link>
 
-            <p className="mt-5 max-w-sm text-sm leading-relaxed text-white/70">
-              Software developer focused on building modern web applications, solving real-world
-              engineering problems, and publishing in-depth technical articles.
+            <p className="mt-5 max-w-sm text-sm leading-relaxed text-white/65">
+              Independent developer portfolio and technology publication dedicated to resilient web
+              architecture, full-stack TypeScript systems, and thoughtful software craft.
             </p>
 
-            {/* Social Media Links Bar */}
-            <div className="mt-6 flex flex-wrap gap-2">
+            {/* Social Links */}
+            <div className="mt-7 flex flex-wrap gap-2">
               {socialEntries.map((item) => (
                 <a
                   key={item.label}
                   href={item.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 border border-white/20 bg-white/[0.02] px-3 py-1.5 font-mono text-[11px] text-white/80 transition hover:border-white hover:bg-white hover:text-navy"
+                  className="inline-flex items-center gap-1 border border-white/15 px-3 py-1.5 font-mono text-[11px] text-white/75 transition hover:border-white hover:bg-white hover:text-navy"
                 >
                   <span>{item.label}</span>
-                  <ArrowUpRight className="h-3 w-3" />
+                  <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
                 </a>
               ))}
             </div>
           </div>
 
-          {/* 2. Quick Navigation */}
+          {/* 2. Navigation */}
           <div className="lg:col-span-2">
-            <h3 className="font-mono text-xs font-bold uppercase tracking-widest text-white">
+            <h3 className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-white/50">
               Navigation
             </h3>
             <ul className="mt-5 space-y-3 text-sm text-white/75">
@@ -183,181 +155,92 @@ export function Footer() {
             </ul>
           </div>
 
-          {/* 3. Explore (Latest Articles, Featured Projects, Technical Topics) */}
+          {/* 3. Selected Work & Dispatches */}
           <div className="lg:col-span-3">
-            <h3 className="font-mono text-xs font-bold uppercase tracking-widest text-white">
-              Explore
+            <h3 className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-white/50">
+              {featuredProjects.length > 0 ? "Selected Work" : "Publication"}
             </h3>
-            <div className="mt-5 space-y-4 text-sm">
-              <div>
-                <p className="font-mono text-[10px] uppercase tracking-wider text-white/50">
-                  Latest Articles
-                </p>
-                <ul className="mt-2 space-y-1.5 text-white/75">
-                  {latestBlogs.length > 0 ? (
-                    latestBlogs.slice(0, 2).map((b) => (
-                      <li key={b.id}>
-                        <Link
-                          href={`/blog/${b.slug}`}
-                          className="line-clamp-1 text-xs transition hover:text-white"
-                        >
-                          → {b.title}
-                        </Link>
-                      </li>
-                    ))
-                  ) : (
-                    <li>
-                      <Link href="/blog" className="text-xs transition hover:text-white">
-                        → Browse Technology Magazine
-                      </Link>
-                    </li>
-                  )}
-                </ul>
-              </div>
-
-              <div>
-                <p className="font-mono text-[10px] uppercase tracking-wider text-white/50">
-                  Featured Projects
-                </p>
-                <ul className="mt-2 space-y-1.5 text-white/75">
-                  {featuredProjects.length > 0 ? (
-                    featuredProjects.slice(0, 2).map((p) => (
-                      <li key={p.id}>
-                        <Link
-                          href={`/projects/${p.slug}`}
-                          className="line-clamp-1 text-xs transition hover:text-white"
-                        >
-                          → {p.title}
-                        </Link>
-                      </li>
-                    ))
-                  ) : (
-                    <li>
-                      <Link href="/projects" className="text-xs transition hover:text-white">
-                        → Explore Engineering Portfolio
-                      </Link>
-                    </li>
-                  )}
-                </ul>
-              </div>
-
-              <div>
-                <p className="font-mono text-[10px] uppercase tracking-wider text-white/50">
-                  Technical Topics
-                </p>
-                <div className="mt-2 flex flex-wrap gap-1.5 font-mono text-[11px]">
-                  <Link
-                    href="/blog"
-                    className="border border-white/15 px-2 py-0.5 text-white/75 transition hover:border-white hover:text-white"
-                  >
-                    Full-Stack
-                  </Link>
-                  <Link
-                    href="/blog"
-                    className="border border-white/15 px-2 py-0.5 text-white/75 transition hover:border-white hover:text-white"
-                  >
-                    TypeScript
-                  </Link>
-                  <Link
-                    href="/blog"
-                    className="border border-white/15 px-2 py-0.5 text-white/75 transition hover:border-white hover:text-white"
-                  >
-                    Architecture
-                  </Link>
-                </div>
-              </div>
-            </div>
+            <ul className="mt-5 space-y-3 text-sm text-white/75">
+              {featuredProjects.length > 0 ? (
+                featuredProjects.map((proj) => (
+                  <li key={proj.id}>
+                    <Link
+                      href={`/projects/${proj.slug}`}
+                      className="line-clamp-1 transition hover:text-white"
+                    >
+                      {proj.title}
+                    </Link>
+                  </li>
+                ))
+              ) : latestBlogs.length > 0 ? (
+                latestBlogs.map((blog) => (
+                  <li key={blog.id}>
+                    <Link
+                      href={`/blog/${blog.slug}`}
+                      className="line-clamp-1 transition hover:text-white"
+                    >
+                      {blog.title}
+                    </Link>
+                  </li>
+                ))
+              ) : (
+                <>
+                  <li>
+                    <Link href="/projects" className="transition hover:text-white">
+                      Engineering Archive
+                    </Link>
+                  </li>
+                  <li>
+                    <Link href="/blog" className="transition hover:text-white">
+                      Technology Magazine
+                    </Link>
+                  </li>
+                </>
+              )}
+            </ul>
           </div>
 
-          {/* 4. Contact & Direct Channels */}
-          <div className="lg:col-span-3">
-            <h3 className="font-mono text-xs font-bold uppercase tracking-widest text-white">
-              Contact & Channels
+          {/* 4. Direct Contact */}
+          <div className="lg:col-span-2">
+            <h3 className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-white/50">
+              Connect
             </h3>
-            <div className="mt-5 space-y-3.5 text-sm text-white/75">
-              {social.email && (
-                <div className="flex items-start gap-2.5">
-                  <Mail className="mt-0.5 h-4 w-4 shrink-0 text-white/60" />
-                  <a
-                    href={`mailto:${social.email}`}
-                    className="break-all font-mono text-xs text-white underline underline-offset-4"
-                  >
-                    {social.email}
-                  </a>
-                </div>
-              )}
-
-              <div className="flex items-start gap-2.5">
-                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-white/60" />
-                <span className="text-xs text-white/80">
-                  {settings.location || "Remote · Global"}
-                </span>
+            <div className="mt-5 space-y-3 text-sm text-white/75">
+              <div className="flex items-center gap-2">
+                <MapPin className="h-3.5 w-3.5 shrink-0 text-white/50" aria-hidden="true" />
+                <span>{settings.location || "Remote · Global"}</span>
               </div>
-
-              <ul className="space-y-2 border-t border-white/10 pt-3 font-mono text-xs">
-                <li>
-                  <a
-                    href={social.github || "https://github.com/zaakir10"}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-white/75 transition hover:text-white"
-                  >
-                    <span>GitHub</span>
-                    <ArrowUpRight className="h-3 w-3" />
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href={social.facebook || "https://facebook.com/dezaakir"}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-white/75 transition hover:text-white"
-                  >
-                    <span>Facebook</span>
-                    <ArrowUpRight className="h-3 w-3" />
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href={social.tiktok || "https://tiktok.com/@dezaakir"}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-white/75 transition hover:text-white"
-                  >
-                    <span>TikTok</span>
-                    <ArrowUpRight className="h-3 w-3" />
-                  </a>
-                </li>
-                <li>
-                  <Link
-                    href="/contact"
-                    className="inline-flex items-center gap-1.5 text-white underline underline-offset-4"
-                  >
-                    <span>Direct Contact Form</span>
-                    <ArrowUpRight className="h-3 w-3" />
-                  </Link>
-                </li>
-              </ul>
+              {social.email && (
+                <a
+                  href={`mailto:${social.email}`}
+                  className="flex items-center gap-2 break-all transition hover:text-white"
+                >
+                  <Mail className="h-3.5 w-3.5 shrink-0 text-white/50" aria-hidden="true" />
+                  <span>{social.email}</span>
+                </a>
+              )}
+              <div className="pt-2">
+                <Link
+                  href="/contact"
+                  className="inline-flex items-center gap-1.5 border-b border-white/40 pb-0.5 font-mono text-xs font-semibold uppercase tracking-wider text-white transition hover:border-white"
+                >
+                  <span>Start a Conversation</span>
+                  <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                </Link>
+              </div>
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Bottom Legal & Attribution Bar */}
-        <div className="mt-14 flex flex-col items-start justify-between gap-4 border-t border-white/15 pt-8 text-xs text-white/60 sm:flex-row sm:items-center">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-            <p>© {year} Dezaakir. All rights reserved.</p>
-            <span className="hidden text-white/30 sm:inline">·</span>
-            <p className="font-medium text-white/80">Designed & Developed by Dezaakir</p>
+      {/* Bottom Legal & Back-to-Top Bar */}
+      <div className="border-t border-white/10">
+        <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-4 px-6 py-6 sm:flex-row sm:items-center">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 font-mono text-[11px] text-white/50">
+            <span>© {year} Dezaakir. All rights reserved.</span>
+            <span>Strict Navy (#0B1628) &amp; White (#FFFFFF) Identity</span>
           </div>
-
-          <div className="flex flex-wrap items-center gap-4 font-mono text-[11px]">
-            <Link href="/sitemap.xml" className="transition hover:text-white">
-              Sitemap
-            </Link>
-            <Link href="/login" className="transition hover:text-white">
-              Admin Portal
-            </Link>
-          </div>
+          <BackToTopButton />
         </div>
       </div>
     </footer>

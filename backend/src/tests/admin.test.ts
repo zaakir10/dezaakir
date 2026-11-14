@@ -3,7 +3,8 @@ import request from "supertest";
 import { createApp } from "../app.js";
 import { resetRateLimits } from "../middleware/rateLimit.js";
 import { bootstrapAdmin } from "../scripts/create-admin.js";
-import { clearCapturedEmails, getCapturedEmails } from "../services/email.service.js";
+import { EmailCampaign, EmailSuppression, ModerationLog, User } from "../models/index.js";
+import { classifyEmailError, clearCapturedEmails, getCapturedEmails } from "../services/email.service.js";
 import { generateTotpCode } from "../utils/crypto.js";
 import { clearTestDatabase, startTestDatabase, stopTestDatabase } from "./helpers/db.js";
 
@@ -460,5 +461,229 @@ describe("Phase 8: Admin Overview, User Management & Audit Logs", () => {
     expect(firstActivity.deviceName).toBeDefined();
     expect(firstActivity.userAgent).toBeUndefined();
     expect(String(firstActivity.deviceName)).not.toContain("Mozilla/5.0");
+  });
+
+  it("supports DB storage control (email history & audit cleanup, retention), user moderation (1h, 1w, permanent, auto & manual reinstatement), suspicious activity, and email deliverability", async () => {
+    const admin = await loginAdmin();
+    const member = await registerAndLoginMember("moderated-user@example.com");
+
+    // 1. Email History: create today's and an older campaign, test Delete Today & Delete All
+    await request(app)
+      .post("/api/admin/emails/send")
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({
+        recipientMode: "SINGLE",
+        recipientIds: [member.userId],
+        subject: "Today Campaign",
+        bodyHtml: "<p>Today's message</p>",
+      });
+    await EmailCampaign.create({
+      subject: "Old Campaign",
+      bodyHtml: "<p>Old</p>",
+      bodyText: "Old",
+      recipientMode: "SINGLE",
+      recipientCount: 1,
+      sentCount: 1,
+      failedCount: 0,
+      pendingCount: 0,
+      status: "COMPLETED",
+      sender: admin.adminId,
+      senderEmail: "admin@dezaakir.com",
+      senderName: "Dezaakir",
+      recipients: [],
+      createdAt: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000),
+    });
+
+    const delTodayEmails = await request(app)
+      .post("/api/admin/emails/history/cleanup")
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({ scope: "TODAY", confirm: true });
+    expect(delTodayEmails.status).toBe(200);
+    expect(delTodayEmails.body.data.deletedCount).toBe(1);
+    expect(delTodayEmails.body.data.remainingCount).toBe(1);
+
+    const delAllEmails = await request(app)
+      .post("/api/admin/emails/history/cleanup")
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({ scope: "ALL", confirm: true });
+    expect(delAllEmails.status).toBe(200);
+    expect(delAllEmails.body.data.deletedCount).toBe(1);
+    expect(delAllEmails.body.data.remainingCount).toBe(0);
+
+    // 2. Audit Logs: Delete Today (preserving critical) & Delete All & Export
+    const exportRes = await request(app)
+      .get("/api/admin/audit-logs/export")
+      .set("Cookie", admin.cookie);
+    expect(exportRes.status).toBe(200);
+    expect(Array.isArray(exportRes.body.data.logs)).toBe(true);
+
+    const delTodayAudit = await request(app)
+      .post("/api/admin/audit-logs/cleanup")
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({ scope: "TODAY", confirm: true, preserveCritical: true });
+    expect(delTodayAudit.status).toBe(200);
+
+    const delAllAudit = await request(app)
+      .post("/api/admin/audit-logs/cleanup")
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({ scope: "ALL", confirm: true, preserveCritical: false });
+    expect(delAllAudit.status).toBe(200);
+
+    // 3. Retention settings & automatic cleanup
+    const retGet = await request(app)
+      .get("/api/admin/retention")
+      .set("Cookie", admin.cookie);
+    expect(retGet.status).toBe(200);
+    expect(retGet.body.data.collections).toBeDefined();
+
+    const retPut = await request(app)
+      .put("/api/admin/retention")
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({
+        emailHistoryDays: 14,
+        auditLogDays: 30,
+        activityLogDays: 30,
+        autoCleanupEnabled: true,
+      });
+    expect(retPut.status).toBe(200);
+    expect(retPut.body.data.retention.emailHistoryDays).toBe(14);
+
+    const retRun = await request(app)
+      .post("/api/admin/retention/run")
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken);
+    expect(retRun.status).toBe(200);
+
+    // 4. Suspensions: 1-hour, 1-week, Permanent, Unauthorized access while suspended, Manual & Auto reinstatement
+    const susp1h = await request(app)
+      .post(`/api/admin/users/${member.userId}/suspend`)
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({ duration: "1H", reason: "Rate limit abuse" });
+    expect(susp1h.status).toBe(200);
+    expect(susp1h.body.data.user.status).toBe("SUSPENDED");
+    expect(susp1h.body.data.user.suspension.type).toBe("TEMPORARY");
+
+    // Existing session is revoked and protected route is blocked
+    const blockedProtected = await request(app)
+      .get("/api/auth/me")
+      .set("Cookie", member.cookie);
+    expect(blockedProtected.status).toBe(401);
+
+    // Login while suspended returns 403 ACCOUNT_SUSPENDED with expiration info
+    const blockedLogin = await request(app).post("/api/auth/login").send({
+      email: "moderated-user@example.com",
+      password: "MemberStrongPassword!123",
+    });
+    expect(blockedLogin.status).toBe(403);
+    expect(blockedLogin.body.error.code).toBe("ACCOUNT_SUSPENDED");
+    expect(blockedLogin.body.error.message).toContain("temporarily suspended until");
+
+    // Automatic reinstatement when temporary suspension expires
+    await User.updateOne(
+      { _id: member.userId },
+      { $set: { "suspension.expiresAt": new Date(Date.now() - 60_000) } },
+    );
+    const autoReinstateLogin = await request(app).post("/api/auth/login").send({
+      email: "moderated-user@example.com",
+      password: "MemberStrongPassword!123",
+    });
+    expect(autoReinstateLogin.status).toBe(200);
+
+    const autoLog = await ModerationLog.findOne({
+      user: member.userId,
+      action: "AUTO_REINSTATED",
+    }).lean();
+    expect(autoLog).not.toBeNull();
+
+    // 1-week suspension & Permanent suspension + manual reinstatement
+    const susp1w = await request(app)
+      .post(`/api/admin/users/${member.userId}/suspend`)
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({ duration: "7D", reason: "Repeated policy violation" });
+    expect(susp1w.status).toBe(200);
+
+    const suspPerm = await request(app)
+      .post(`/api/admin/users/${member.userId}/suspend`)
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({ duration: "PERMANENT", reason: "Severe abuse", notes: "Confirmed by audit" });
+    expect(suspPerm.status).toBe(200);
+    expect(suspPerm.body.data.user.suspension.type).toBe("PERMANENT");
+
+    const reinstateRes = await request(app)
+      .post(`/api/admin/users/${member.userId}/reinstate`)
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({ reason: "Appeal approved" });
+    expect(reinstateRes.status).toBe(200);
+    expect(reinstateRes.body.data.user.status).toBe("ACTIVE");
+
+    const modHistory = await request(app)
+      .get("/api/admin/moderation-history")
+      .set("Cookie", admin.cookie);
+    expect(modHistory.status).toBe(200);
+    expect(modHistory.body.data.logs.length).toBeGreaterThanOrEqual(4);
+
+    // 5. Suspicious activity summary
+    const suspActivity = await request(app)
+      .get("/api/admin/suspicious-activity")
+      .set("Cookie", admin.cookie);
+    expect(suspActivity.status).toBe(200);
+    expect(suspActivity.body.data.thresholds.failedLoginLockoutThreshold).toBe(5);
+    expect(Array.isArray(suspActivity.body.data.events)).toBe(true);
+
+    // 6. Email deliverability diagnostics, test email, and bounce suppression + error classification
+    const delivRes = await request(app)
+      .get("/api/admin/email-deliverability")
+      .set("Cookie", admin.cookie);
+    expect(delivRes.status).toBe(200);
+    expect(delivRes.body.data.report.dns.spf).toBeDefined();
+    expect(delivRes.body.data.report.dns.dkim).toBeDefined();
+    expect(delivRes.body.data.report.dns.dmarc).toBeDefined();
+
+    const testDelivRes = await request(app)
+      .post("/api/admin/email-deliverability/test")
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({ to: "verify@example.com" });
+    expect(testDelivRes.status).toBe(200);
+    expect(testDelivRes.body.data.acceptedBySmtp).toBe(true);
+
+    // Verify error classification and bounce suppression blocks suppressed recipients
+    const hardBounceClass = classifyEmailError({ responseCode: 550, message: "5.1.1 User unknown" });
+    expect(hardBounceClass.category).toBe("RECIPIENT_REJECTED");
+    expect(hardBounceClass.isHardBounce).toBe(true);
+
+    const transientClass = classifyEmailError({ responseCode: 421, message: "Try again later" });
+    expect(transientClass.category).toBe("TRANSIENT_SMTP");
+    expect(transientClass.isTransient).toBe(true);
+
+    await EmailSuppression.create({
+      email: "bounced@example.com",
+      failureCount: 3,
+      suppressed: true,
+      reason: "5.1.1 User unknown",
+      lastErrorCategory: "RECIPIENT_REJECTED",
+      lastFailedAt: new Date(),
+      suppressedAt: new Date(),
+    });
+    const forgotSuppressed = await request(app)
+      .post("/api/auth/forgot-password")
+      .send({ email: "bounced@example.com" });
+    expect(forgotSuppressed.status).toBe(200);
+
+    // Verify email verification & password reset emails are delivered for valid accounts
+    clearCapturedEmails();
+    await request(app).post("/api/auth/forgot-password").send({ email: "moderated-user@example.com" });
+    expect(getCapturedEmails().length).toBe(1);
+    expect(getCapturedEmails()[0]!.meta?.type).toBe("password-reset");
   });
 });

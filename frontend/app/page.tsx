@@ -1,21 +1,24 @@
 import Image from "next/image";
 import Link from "next/link";
-import { BrandLogo } from "@/components/ui/BrandLogo";
-import {
-  ArrowRight,
-  ArrowUpRight,
-  Code2,
-  Download,
-  ExternalLink,
-  FileText,
-  Mail,
-  MapPin,
-  Terminal,
-} from "lucide-react";
+import { ArrowRight, ArrowUpRight, MapPin } from "lucide-react";
 import { BlogCard } from "@/components/ui/BlogCard";
+import { BrandLogo } from "@/components/ui/BrandLogo";
+import { MotionReveal } from "@/components/ui/MotionReveal";
 import { ProjectCard } from "@/components/ui/ProjectCard";
 import { fetchPublicBlogs, fetchPublicProjects, fetchPublicSettings } from "@/lib/api";
 import { siteConfig } from "@/lib/site";
+
+function normalizeDiscipline(rawCategory: string): string {
+  const lower = rawCategory.toLowerCase();
+  if (lower.includes("front")) return "Frontend";
+  if (lower.includes("back") || lower.includes("api")) return "Backend";
+  if (lower.includes("data") || lower.includes("sql") || lower.includes("mongo")) return "Databases";
+  if (lower.includes("lang")) return "Programming Languages";
+  if (lower.includes("net") || lower.includes("infra") || lower.includes("cloud") || lower.includes("sec"))
+    return "Infrastructure";
+  if (lower.includes("tool") || lower.includes("ai")) return "AI & Developer Tools";
+  return rawCategory || "Engineering";
+}
 
 export default async function HomePage() {
   const [settings, featuredRes, allProjectsRes, { blogs }] = await Promise.all([
@@ -27,21 +30,25 @@ export default async function HomePage() {
 
   const projects =
     featuredRes.projects.length > 0 ? featuredRes.projects : allProjectsRes.projects;
+  const leadProject = projects[0];
+  const secondaryProjects = projects.slice(1, 3);
 
-  const skillsByCategory = settings.skills.reduce<Record<string, string[]>>((acc, skill) => {
-    const key = skill.category || "Core Engineering";
+  const skillsByDiscipline = settings.skills.reduce<Record<string, string[]>>((acc, skill) => {
+    const key = normalizeDiscipline(skill.category);
     if (!acc[key]) acc[key] = [];
-    acc[key]!.push(skill.name);
+    if (!acc[key]!.includes(skill.name)) {
+      acc[key]!.push(skill.name);
+    }
     return acc;
   }, {});
 
   const social = settings.socialLinks || {};
   const socialLinksList = [
     { label: "GitHub", href: social.github || "https://github.com/zaakir10" },
-    ...(social.facebook ? [{ label: "Facebook", href: social.facebook }] : []),
-    ...(social.tiktok ? [{ label: "TikTok", href: social.tiktok }] : []),
     ...(social.linkedin ? [{ label: "LinkedIn", href: social.linkedin }] : []),
     ...(social.x ? [{ label: "X / Twitter", href: social.x }] : []),
+    ...(social.facebook ? [{ label: "Facebook", href: social.facebook }] : []),
+    ...(social.tiktok ? [{ label: "TikTok", href: social.tiktok }] : []),
   ];
 
   const biographyParagraphs = settings.biography
@@ -66,114 +73,119 @@ export default async function HomePage() {
       />
 
       {/* ================================================================= */}
-      {/* 1. PREMIUM HERO EXPERIENCE                                        */}
+      {/* 1. EDITORIAL HERO COMPOSITION                                     */}
       {/* ================================================================= */}
-      <section className="border-b border-white/15">
-        <div className="mx-auto max-w-6xl px-6 py-20 sm:py-28">
-          <div className="grid items-center gap-14 lg:grid-cols-12">
-            {/* Hero Copy & Primary Actions */}
-            <div className="lg:col-span-7">
-              <div className="inline-flex items-center gap-2.5 border border-white/20 bg-white/[0.03] px-3.5 py-1.5 font-mono text-xs uppercase tracking-widest text-white/85">
-                <Terminal className="h-3.5 w-3.5 text-white" />
-                <span>{settings.authorName || settings.siteTitle || "Dezaakir"} · Software Engineer</span>
+      <section className="bg-editorial-grid border-b border-white/15">
+        <div className="mx-auto max-w-6xl px-6 py-20 sm:py-28 lg:py-32">
+          <div className="grid items-end gap-12 lg:grid-cols-12 lg:gap-16">
+            {/* Primary Editorial Statement */}
+            <div className="min-w-0 lg:col-span-8">
+              <div className="flex flex-wrap items-center gap-4 font-mono text-[11px] uppercase tracking-[0.22em] text-white/60">
+                <span>{settings.authorName || settings.siteTitle || "Dezaakir"}</span>
+                <span className="text-white/25">/</span>
+                <span>Full-Stack Software Engineer</span>
+                {settings.location && (
+                  <>
+                    <span className="text-white/25">/</span>
+                    <span className="inline-flex items-center gap-1">
+                      <MapPin className="h-3 w-3" aria-hidden="true" />
+                      {settings.location}
+                    </span>
+                  </>
+                )}
               </div>
 
-              <h1 className="mt-7 text-4xl font-bold leading-[1.08] tracking-tight text-white sm:text-6xl">
+              <h1 className="mt-7 text-4xl font-bold leading-[1.03] tracking-tight text-white sm:text-6xl lg:text-[4.25rem]">
                 {settings.heroTitle || "Building Digital Experiences Through Code & Technology."}
               </h1>
 
-              <p className="mt-6 max-w-2xl text-base leading-relaxed text-white/75 sm:text-lg">
+              <p className="mt-7 max-w-2xl text-base leading-relaxed text-white/75 sm:text-xl sm:leading-relaxed">
                 {settings.heroDescription ||
                   "I'm a software developer passionate about building modern web applications, solving real-world problems, and exploring emerging technologies."}
               </p>
 
               {/* Primary & Secondary CTAs */}
-              <div className="mt-9 flex flex-wrap items-center gap-4">
+              <div className="mt-10 flex flex-wrap items-center gap-4">
                 <Link
                   href="/projects"
-                  className="inline-flex items-center gap-2.5 bg-white px-7 py-3.5 text-xs font-bold uppercase tracking-wider text-navy transition hover:bg-white/90"
+                  className="inline-flex items-center gap-2.5 bg-white px-7 py-3.5 font-mono text-xs font-bold uppercase tracking-wider text-navy transition hover:bg-white/90"
                 >
-                  <span>View My Projects</span>
-                  <ArrowRight className="h-4 w-4" />
+                  <span>Explore Projects</span>
+                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
                 </Link>
 
                 <Link
                   href="/contact"
-                  className="inline-flex items-center gap-2.5 border border-white/30 bg-white/[0.02] px-7 py-3.5 text-xs font-bold uppercase tracking-wider text-white transition hover:border-white hover:bg-white/10"
+                  className="inline-flex items-center gap-2.5 border border-white/30 px-7 py-3.5 font-mono text-xs font-bold uppercase tracking-wider text-white transition hover:border-white hover:bg-white hover:text-navy"
                 >
                   <span>Contact Me</span>
                 </Link>
               </div>
-
-              {/* Social & GitHub Profile Bar */}
-              <div className="mt-12 flex flex-wrap items-center gap-3 border-t border-white/15 pt-7">
-                <span className="font-mono text-[11px] uppercase tracking-widest text-white/50">
-                  Connect:
-                </span>
-                {socialLinksList.map((item) => (
-                  <a
-                    key={item.label}
-                    href={item.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 border border-white/15 bg-white/[0.02] px-3 py-1.5 font-mono text-xs text-white/80 transition hover:border-white hover:bg-white hover:text-navy"
-                  >
-                    <span>{item.label}</span>
-                    <ArrowUpRight className="h-3 w-3" />
-                  </a>
-                ))}
-              </div>
             </div>
 
-            {/* Architectural Developer Portrait Card */}
-            <div className="lg:col-span-5">
-              <div className="border border-white/20 bg-white/[0.02] p-6">
-                <div className="flex items-center justify-between border-b border-white/15 pb-3.5 font-mono text-[11px] uppercase tracking-wider text-white/60">
-                  <span>Developer Profile</span>
-                  <span>{settings.location || "Remote · Global"}</span>
+            {/* Right Column: Verified Portrait or Typographic Emblem */}
+            <div className="min-w-0 lg:col-span-4">
+              <div className="border border-white/20 bg-navy">
+                <div className="flex items-center justify-between border-b border-white/15 px-5 py-3 font-mono text-[10px] uppercase tracking-[0.2em] text-white/55">
+                  <span>{settings.siteTitle || "Dezaakir"}</span>
+                  <span>Portfolio · Journal</span>
                 </div>
 
-                <div className="relative mt-4 aspect-square w-full overflow-hidden border border-white/15 bg-navy">
-                  {settings.profileImage?.url ? (
+                {settings.profileImage?.url ? (
+                  <div className="relative aspect-[4/5] w-full overflow-hidden bg-navy">
                     <Image
                       src={settings.profileImage.url}
-                      alt={settings.profileImage.alt || "Dezaakir Portrait"}
+                      alt={settings.profileImage.alt || "Dezaakir"}
                       fill
-                      sizes="(max-width: 1024px) 100vw, 420px"
+                      sizes="(max-width: 1024px) 100vw, 380px"
                       className="object-cover"
                       priority
                     />
-                  ) : (
-                    <div className="flex h-full w-full flex-col items-center justify-center p-10 text-center">
-                      <BrandLogo className="h-32" label="Dezaakir Official Emblem" />
-                      <p className="mt-5 font-mono text-xs font-bold uppercase tracking-widest text-white">
-                        {settings.siteTitle || "Dezaakir"}
-                      </p>
-                      <p className="mt-1 max-w-xs font-mono text-[11px] text-white/55">
-                        {settings.tagline}
-                      </p>
+                  </div>
+                ) : (
+                  <div className="flex aspect-[4/5] w-full flex-col justify-between p-8">
+                    <div className="flex items-start justify-between">
+                      <BrandLogo className="h-14" label="Dezaakir Official Emblem" />
+                      <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/40">
+                        EST. DEV
+                      </span>
                     </div>
-                  )}
-                </div>
 
-                <div className="mt-5 grid grid-cols-2 gap-3 border-t border-white/15 pt-4 font-mono text-xs">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-white/50">
-                      Core Focus
-                    </p>
-                    <p className="mt-1 font-semibold text-white">Full-Stack Web & Systems</p>
+                    <div className="space-y-4 border-t border-white/15 pt-6">
+                      <p className="font-mono text-xs uppercase tracking-[0.18em] text-white/55">
+                        Focus Areas
+                      </p>
+                      <p className="text-lg font-semibold leading-snug text-white">
+                        {settings.tagline || "Web Architecture, TypeScript Systems & AI Engineering"}
+                      </p>
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {(settings.careerInterests ?? []).slice(0, 3).map((item) => (
+                          <span
+                            key={item}
+                            className="border border-white/15 px-2.5 py-1 font-mono text-[10px] text-white/75"
+                          >
+                            {item}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-[10px] uppercase tracking-wider text-white/50">
-                      Documentation
-                    </p>
-                    <Link
-                      href="/about"
-                      className="mt-1 inline-block font-semibold text-white underline underline-offset-4"
+                )}
+
+                {/* Social Bar */}
+                <div className="flex flex-wrap items-center gap-2 border-t border-white/15 px-5 py-3.5">
+                  {socialLinksList.map((item) => (
+                    <a
+                      key={item.label}
+                      href={item.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 font-mono text-[11px] text-white/70 transition hover:text-white"
                     >
-                      Biography & CV →
-                    </Link>
-                  </div>
+                      <span>{item.label}</span>
+                      <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+                    </a>
+                  ))}
                 </div>
               </div>
             </div>
@@ -182,258 +194,239 @@ export default async function HomePage() {
       </section>
 
       {/* ================================================================= */}
-      {/* 2. FEATURED PROJECTS SHOWCASE                                     */}
+      {/* 2. FEATURED ENGINEERING WORK                                      */}
       {/* ================================================================= */}
       <section className="border-b border-white/15">
         <div className="mx-auto max-w-6xl px-6 py-20 sm:py-24">
-          <div className="flex flex-col justify-between gap-4 border-b border-white/15 pb-8 sm:flex-row sm:items-end">
-            <div>
-              <p className="font-mono text-xs uppercase tracking-widest text-white/55">
-                01 / Selected Engineering Work
-              </p>
-              <h2 className="mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl">
-                Featured Projects
-              </h2>
-            </div>
-            <Link
-              href="/projects"
-              className="inline-flex items-center gap-2 border border-white/25 px-5 py-2.5 font-mono text-xs font-semibold uppercase tracking-wider text-white transition hover:border-white hover:bg-white hover:text-navy"
-            >
-              <span>View All Projects</span>
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
-
-          {projects.length > 0 ? (
-            <div className="mt-12 grid gap-8 md:grid-cols-2">
-              {projects.map((project, idx) => (
-                <ProjectCard key={project.id} project={project} index={idx} />
-              ))}
-            </div>
-          ) : (
-            <div className="mt-12 border border-white/15 bg-white/[0.02] p-12 text-center">
-              <Code2 className="mx-auto h-9 w-9 text-white/45" />
-              <h3 className="mt-4 text-lg font-bold text-white">Engineering Portfolio</h3>
-              <p className="mx-auto mt-2 max-w-md text-sm text-white/70">
-                Published software engineering projects from MongoDB appear here automatically.
-              </p>
+          <MotionReveal>
+            <div className="flex flex-col justify-between gap-6 border-b border-white/15 pb-8 sm:flex-row sm:items-end">
+              <div>
+                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-white/50">
+                  01 · Selected Engineering Work
+                </p>
+                <h2 className="mt-2.5 text-3xl font-bold tracking-tight text-white sm:text-4xl">
+                  Featured Projects
+                </h2>
+              </div>
               <Link
                 href="/projects"
-                className="mt-6 inline-flex items-center gap-2 bg-white px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-navy"
+                className="inline-flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wider text-white/80 transition hover:text-white"
               >
-                <span>Explore Projects Page</span>
-                <ArrowRight className="h-3.5 w-3.5" />
+                <span>All Case Studies</span>
+                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
               </Link>
+            </div>
+          </MotionReveal>
+
+          {leadProject ? (
+            <div className="mt-10 space-y-8">
+              <MotionReveal>
+                <ProjectCard project={leadProject} index={0} variant="editorial" />
+              </MotionReveal>
+
+              {secondaryProjects.length > 0 && (
+                <div className="grid gap-8 md:grid-cols-2">
+                  {secondaryProjects.map((project, idx) => (
+                    <MotionReveal key={project.id} delay={idx * 0.08}>
+                      <ProjectCard project={project} index={idx + 1} />
+                    </MotionReveal>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="mt-10 border border-white/15 p-10 text-center">
+              <p className="font-mono text-xs uppercase tracking-[0.2em] text-white/50">
+                Engineering Archive
+              </p>
+              <p className="mt-2 text-base text-white/75">
+                Published engineering case studies will appear here as soon as they are released.
+              </p>
             </div>
           )}
         </div>
       </section>
 
       {/* ================================================================= */}
-      {/* 3. ABOUT PREVIEW — DEVELOPER INTRODUCTION                         */}
+      {/* 3. ABOUT PREVIEW — EDITORIAL INTRODUCTION                         */}
       {/* ================================================================= */}
-      <section className="border-b border-white/15 bg-white/[0.01]">
+      <section className="border-b border-white/15">
         <div className="mx-auto max-w-6xl px-6 py-20 sm:py-24">
-          <div className="grid gap-12 lg:grid-cols-12">
-            <div className="lg:col-span-5">
-              <p className="font-mono text-xs uppercase tracking-widest text-white/55">
-                02 / About the Developer
-              </p>
-              <h2 className="mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl">
-                Engineering With Clarity, Precision & Purpose.
-              </h2>
-              <p className="mt-4 font-mono text-xs text-white/65">{settings.tagline}</p>
-
-              <div className="mt-8 flex flex-wrap gap-3">
+          <MotionReveal>
+            <div className="grid gap-12 lg:grid-cols-12">
+              <div className="lg:col-span-4">
+                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-white/50">
+                  02 · Engineering Profile
+                </p>
+                <h2 className="mt-2.5 text-3xl font-bold tracking-tight text-white sm:text-4xl">
+                  Craft, Reliability &amp; Clarity.
+                </h2>
                 <Link
                   href="/about"
-                  className="inline-flex items-center gap-2 bg-white px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-navy transition hover:bg-white/90"
+                  className="mt-7 inline-flex items-center gap-2 border-b border-white/40 pb-1 font-mono text-xs font-bold uppercase tracking-wider text-white transition hover:border-white"
                 >
-                  <span>Read Full Profile</span>
-                  <ArrowRight className="h-3.5 w-3.5" />
+                  <span>Read Full Biography</span>
+                  <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
                 </Link>
-                {settings.cvUrl && (
-                  <a
-                    href={settings.cvUrl}
-                    download
-                    className="inline-flex items-center gap-2 border border-white/25 px-5 py-2.5 text-xs font-semibold uppercase tracking-wider text-white transition hover:border-white"
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                    <span>Download CV</span>
-                  </a>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-5 lg:col-span-7">
-              <div className="space-y-4 border-l-2 border-white pl-6 text-base leading-relaxed text-white/85">
-                {biographyParagraphs.slice(0, 2).map((para, idx) => (
-                  <p key={idx}>{para}</p>
-                ))}
               </div>
 
-              {settings.careerInterests && settings.careerInterests.length > 0 && (
-                <div className="border border-white/15 bg-navy p-6">
-                  <p className="font-mono text-[11px] uppercase tracking-widest text-white/55">
-                    Core Focus Areas
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
+              <div className="space-y-6 lg:col-span-8">
+                <div className="space-y-4 border-l-2 border-white/30 pl-6 text-base leading-relaxed text-white/80 sm:text-lg">
+                  {biographyParagraphs.slice(0, 2).map((paragraph, i) => (
+                    <p key={i}>{paragraph}</p>
+                  ))}
+                </div>
+
+                {settings.careerInterests && settings.careerInterests.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 pt-2">
+                    <span className="mr-2 font-mono text-[11px] uppercase tracking-[0.18em] text-white/50">
+                      Specialties:
+                    </span>
                     {settings.careerInterests.map((interest) => (
                       <span
                         key={interest}
-                        className="border border-white/20 bg-white/[0.03] px-3 py-1.5 font-mono text-xs text-white"
+                        className="border border-white/15 px-3 py-1 font-mono text-xs text-white/80"
                       >
                         {interest}
                       </span>
                     ))}
                   </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ================================================================= */}
-      {/* 4. TECHNICAL SKILLS MATRIX                                        */}
-      {/* ================================================================= */}
-      <section className="border-b border-white/15">
-        <div className="mx-auto max-w-6xl px-6 py-20 sm:py-24">
-          <div className="flex flex-col justify-between gap-4 border-b border-white/15 pb-8 sm:flex-row sm:items-end">
-            <div>
-              <p className="font-mono text-xs uppercase tracking-widest text-white/55">
-                03 / Technical Stack
-              </p>
-              <h2 className="mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl">
-                Languages, Frameworks & Tooling
-              </h2>
-            </div>
-            <Link
-              href="/about"
-              className="font-mono text-xs uppercase tracking-wider text-white/75 transition hover:text-white"
-            >
-              Full Technical Breakdown →
-            </Link>
-          </div>
-
-          <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {Object.entries(skillsByCategory).map(([category, items], idx) => (
-              <div
-                key={category}
-                className="flex flex-col justify-between border border-white/15 bg-white/[0.02] p-6 transition hover:border-white/40"
-              >
-                <div>
-                  <div className="flex items-center justify-between border-b border-white/10 pb-3 font-mono text-xs">
-                    <span className="font-bold uppercase tracking-wider text-white">
-                      {category}
-                    </span>
-                    <span className="text-white/45">0{idx + 1}</span>
-                  </div>
-
-                  <div className="mt-5 flex flex-wrap gap-2">
-                    {items.map((skill) => (
-                      <span
-                        key={skill}
-                        className="border border-white/20 bg-navy px-3 py-1.5 font-mono text-xs text-white/90"
-                      >
-                        {skill}
-                      </span>
-                    ))}
-                  </div>
-                </div>
+                )}
               </div>
-            ))}
-          </div>
+            </div>
+          </MotionReveal>
         </div>
       </section>
 
       {/* ================================================================= */}
-      {/* 5. LATEST BLOG ARTICLES                                           */}
+      {/* 4. TECHNICAL EXPERTISE — SPECIFICATION MATRIX                     */}
+      {/* ================================================================= */}
+      {Object.keys(skillsByDiscipline).length > 0 && (
+        <section className="border-b border-white/15">
+          <div className="mx-auto max-w-6xl px-6 py-20 sm:py-24">
+            <MotionReveal>
+              <div className="flex flex-col justify-between gap-4 border-b border-white/15 pb-8 sm:flex-row sm:items-end">
+                <div>
+                  <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-white/50">
+                    03 · Technical Expertise
+                  </p>
+                  <h2 className="mt-2.5 text-3xl font-bold tracking-tight text-white sm:text-4xl">
+                    Stack &amp; Engineering Disciplines
+                  </h2>
+                </div>
+                <p className="max-w-sm text-sm text-white/60">
+                  Production technologies organized by architectural layer and daily engineering practice.
+                </p>
+              </div>
+
+              <div className="divide-y divide-white/15 border-b border-white/15">
+                {Object.entries(skillsByDiscipline).map(([discipline, items], idx) => (
+                  <div
+                    key={discipline}
+                    className="grid items-baseline gap-4 py-6 md:grid-cols-12"
+                  >
+                    <div className="flex items-baseline gap-4 md:col-span-4">
+                      <span className="font-mono text-xs text-white/40">
+                        {String(idx + 1).padStart(2, "0")}
+                      </span>
+                      <h3 className="text-base font-bold tracking-tight text-white">
+                        {discipline}
+                      </h3>
+                    </div>
+                    <div className="flex flex-wrap gap-2 md:col-span-8">
+                      {items.map((tech) => (
+                        <span
+                          key={tech}
+                          className="border border-white/15 bg-white/[0.02] px-3 py-1 font-mono text-xs text-white/85"
+                        >
+                          {tech}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </MotionReveal>
+          </div>
+        </section>
+      )}
+
+      {/* ================================================================= */}
+      {/* 5. LATEST ARTICLES — EDITORIAL PUBLICATION PREVIEW                */}
       {/* ================================================================= */}
       <section className="border-b border-white/15">
         <div className="mx-auto max-w-6xl px-6 py-20 sm:py-24">
-          <div className="flex flex-col justify-between gap-4 border-b border-white/15 pb-8 sm:flex-row sm:items-end">
-            <div>
-              <p className="font-mono text-xs uppercase tracking-widest text-white/55">
-                04 / Technology Publication
-              </p>
-              <h2 className="mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl">
-                Latest Blog Articles
-              </h2>
+          <MotionReveal>
+            <div className="flex flex-col justify-between gap-6 border-b border-white/15 pb-8 sm:flex-row sm:items-end">
+              <div>
+                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-white/50">
+                  04 · Technology Publication
+                </p>
+                <h2 className="mt-2.5 text-3xl font-bold tracking-tight text-white sm:text-4xl">
+                  Latest Dispatches
+                </h2>
+              </div>
+              <Link
+                href="/blog"
+                className="inline-flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wider text-white/80 transition hover:text-white"
+              >
+                <span>Open Magazine</span>
+                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+              </Link>
             </div>
-            <Link
-              href="/blog"
-              className="inline-flex items-center gap-2 border border-white/25 px-5 py-2.5 font-mono text-xs font-semibold uppercase tracking-wider text-white transition hover:border-white hover:bg-white hover:text-navy"
-            >
-              <span>Read All Articles</span>
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
+          </MotionReveal>
 
           {blogs.length > 0 ? (
-            <div className="mt-12 grid gap-8 md:grid-cols-3">
-              {blogs.map((article) => (
-                <BlogCard key={article.id} article={article} />
+            <div className="mt-10 grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+              {blogs.map((article, idx) => (
+                <MotionReveal key={article.id} delay={idx * 0.08}>
+                  <BlogCard article={article} />
+                </MotionReveal>
               ))}
             </div>
           ) : (
-            <div className="mt-12 border border-white/15 bg-white/[0.02] p-12 text-center">
-              <FileText className="mx-auto h-9 w-9 text-white/45" />
-              <h3 className="mt-4 text-lg font-bold text-white">Technology Publication</h3>
-              <p className="mx-auto mt-2 max-w-md text-sm text-white/70">
-                Technical articles, software architecture notes, and tutorials published in the
-                Admin Dashboard appear here automatically.
+            <div className="mt-10 border border-white/15 p-10 text-center">
+              <p className="font-mono text-xs uppercase tracking-[0.2em] text-white/50">
+                Editorial Desk
               </p>
-              <Link
-                href="/blog"
-                className="mt-6 inline-flex items-center gap-2 bg-white px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-navy"
-              >
-                <span>Open Blog</span>
-                <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
+              <p className="mt-2 text-base text-white/75">
+                New technical articles and architecture breakdowns are in preparation.
+              </p>
             </div>
           )}
         </div>
       </section>
 
       {/* ================================================================= */}
-      {/* 6. CLOSING CONTACT CTA                                            */}
+      {/* 6. COLLABORATION CTA                                              */}
       {/* ================================================================= */}
-      <section>
-        <div className="mx-auto max-w-6xl px-6 py-20 sm:py-28">
-          <div className="border border-white/25 bg-white/[0.03] p-8 sm:p-14">
-            <div className="grid items-center gap-10 lg:grid-cols-12">
-              <div className="lg:col-span-8">
-                <p className="font-mono text-xs uppercase tracking-widest text-white/60">
-                  05 / Initiate a Conversation
+      <section className="bg-editorial-grid">
+        <div className="mx-auto max-w-6xl px-6 py-20 sm:py-24">
+          <MotionReveal>
+            <div className="flex flex-col items-start justify-between gap-8 border border-white/20 bg-navy p-8 sm:p-12 lg:flex-row lg:items-center">
+              <div className="max-w-2xl">
+                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-white/55">
+                  05 · Available for Collaboration
                 </p>
-                <h2 className="mt-3 text-3xl font-bold tracking-tight text-white sm:text-5xl">
-                  Ready to build a modern web application or collaborate?
+                <h2 className="mt-3 text-3xl font-bold tracking-tight text-white sm:text-4xl">
+                  Have an ambitious product or engineering challenge?
                 </h2>
-                <p className="mt-4 max-w-2xl text-base leading-relaxed text-white/75">
-                  Whether you have a software project in mind, a technical question, or an
-                  engineering opportunity, reach out directly.
+                <p className="mt-3 text-base leading-relaxed text-white/75">
+                  Let&apos;s discuss full-stack architecture, modern web applications, or technical
+                  collaboration.
                 </p>
               </div>
-
-              <div className="flex flex-col gap-3 sm:flex-row lg:col-span-4 lg:flex-col">
+              <div className="flex flex-wrap items-center gap-4">
                 <Link
                   href="/contact"
-                  className="inline-flex items-center justify-center gap-2 bg-white px-7 py-4 text-xs font-bold uppercase tracking-wider text-navy transition hover:bg-white/90"
+                  className="inline-flex items-center gap-2 bg-white px-7 py-3.5 font-mono text-xs font-bold uppercase tracking-wider text-navy transition hover:bg-white/90"
                 >
-                  <Mail className="h-4 w-4" />
-                  <span>Contact Me</span>
-                </Link>
-                <Link
-                  href="/projects"
-                  className="inline-flex items-center justify-center gap-2 border border-white/30 px-7 py-4 text-xs font-semibold uppercase tracking-wider text-white transition hover:border-white"
-                >
-                  <span>Browse Projects</span>
-                  <ArrowRight className="h-4 w-4" />
+                  <span>Start a Conversation</span>
+                  <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
                 </Link>
               </div>
             </div>
-          </div>
+          </MotionReveal>
         </div>
       </section>
     </main>

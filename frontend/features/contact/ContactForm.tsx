@@ -69,13 +69,13 @@ export function ContactForm() {
     <form
       onSubmit={handleSubmit(onSubmit)}
       noValidate
-      className="space-y-6 border border-white/20 bg-white/[0.02] p-6 sm:p-10"
+      className="space-y-6 border border-white/20 bg-white/[0.015] p-6 sm:p-10"
     >
-      <div className="border-b border-white/15 pb-4">
-        <p className="font-mono text-[11px] uppercase tracking-widest text-white/55">
-          Direct Inquiry Form
+      <div className="border-b border-white/15 pb-5">
+        <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-white/50">
+          Direct Inquiry
         </p>
-        <h2 className="mt-1 text-2xl font-bold tracking-tight text-white">Send a Message</h2>
+        <h2 className="mt-1.5 text-2xl font-bold tracking-tight text-white">Send a Message</h2>
       </div>
 
       {serverSuccess && (
@@ -83,7 +83,7 @@ export function ContactForm() {
           role="status"
           className="flex items-start gap-3 border border-white bg-white px-4 py-3.5 text-sm font-medium text-navy"
         >
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <span>{serverSuccess}</span>
         </div>
       )}
@@ -93,7 +93,7 @@ export function ContactForm() {
           role="alert"
           className="flex items-start gap-3 border border-white bg-white/10 px-4 py-3.5 text-sm text-white"
         >
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <span>{serverError}</span>
         </div>
       )}
@@ -114,7 +114,7 @@ export function ContactForm() {
         <div>
           <label
             htmlFor="contact-name"
-            className="block font-mono text-xs font-semibold uppercase tracking-wider text-white/85"
+            className="block font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-white/75"
           >
             Name
           </label>
@@ -123,6 +123,7 @@ export function ContactForm() {
             type="text"
             autoComplete="name"
             placeholder="Your full name"
+            aria-invalid={Boolean(errors.name)}
             {...register("name")}
             className="mt-2 w-full border border-white/25 bg-navy px-4 py-3 text-sm text-white placeholder:text-white/40 focus:border-white focus:outline-none"
           />
@@ -134,7 +135,7 @@ export function ContactForm() {
         <div>
           <label
             htmlFor="contact-email"
-            className="block font-mono text-xs font-semibold uppercase tracking-wider text-white/85"
+            className="block font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-white/75"
           >
             Email
           </label>
@@ -143,6 +144,7 @@ export function ContactForm() {
             type="email"
             autoComplete="email"
             placeholder="you@example.com"
+            aria-invalid={Boolean(errors.email)}
             {...register("email")}
             className="mt-2 w-full border border-white/25 bg-navy px-4 py-3 text-sm text-white placeholder:text-white/40 focus:border-white focus:outline-none"
           />
@@ -155,7 +157,7 @@ export function ContactForm() {
       <div>
         <label
           htmlFor="contact-subject"
-          className="block font-mono text-xs font-semibold uppercase tracking-wider text-white/85"
+          className="block font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-white/75"
         >
           Subject
         </label>
@@ -163,6 +165,7 @@ export function ContactForm() {
           id="contact-subject"
           type="text"
           placeholder="Project inquiry, collaboration, or technical question"
+          aria-invalid={Boolean(errors.subject)}
           {...register("subject")}
           className="mt-2 w-full border border-white/25 bg-navy px-4 py-3 text-sm text-white placeholder:text-white/40 focus:border-white focus:outline-none"
         />
@@ -174,7 +177,7 @@ export function ContactForm() {
       <div>
         <label
           htmlFor="contact-message"
-          className="block font-mono text-xs font-semibold uppercase tracking-wider text-white/85"
+          className="block font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-white/75"
         >
           Message
         </label>
@@ -182,6 +185,7 @@ export function ContactForm() {
           id="contact-message"
           rows={6}
           placeholder="Tell me about your project, goals, or question..."
+          aria-invalid={Boolean(errors.message)}
           {...register("message")}
           className="mt-2 w-full border border-white/25 bg-navy px-4 py-3 text-sm leading-relaxed text-white placeholder:text-white/40 focus:border-white focus:outline-none"
         />
@@ -191,20 +195,20 @@ export function ContactForm() {
       </div>
 
       <div className="flex flex-col items-start justify-between gap-4 border-t border-white/15 pt-5 sm:flex-row sm:items-center">
-        <p className="font-mono text-xs text-white/60">
-          Protected by schema validation & rate limiting
+        <p className="font-mono text-[11px] text-white/55">
+          Validated &amp; rate-limited direct delivery
         </p>
         <button
           type="submit"
           disabled={isSubmitting}
-          className="inline-flex w-full items-center justify-center gap-2 bg-white px-7 py-3.5 text-xs font-bold uppercase tracking-wider text-navy transition hover:bg-white/90 disabled:opacity-50 sm:w-auto"
+          className="inline-flex w-full items-center justify-center gap-2 bg-white px-7 py-3.5 font-mono text-xs font-bold uppercase tracking-wider text-navy transition hover:bg-white/90 disabled:opacity-50 sm:w-auto"
         >
           {isSubmitting ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
           ) : (
-            <Send className="h-4 w-4" />
+            <Send className="h-4 w-4" aria-hidden="true" />
           )}
-          <span>{isSubmitting ? "Sending Message..." : "Send Message"}</span>
+          <span>{isSubmitting ? "Sending..." : "Send Message"}</span>
         </button>
       </div>
     </form>

@@ -6,9 +6,12 @@ import {
   Blog,
   ContactMessage,
   EmailCampaign,
+  EmailSuppression,
   Media,
+  ModerationLog,
   Project,
   Session,
+  SiteSettings,
   User,
   type ICampaignRecipient,
   type IUser,
@@ -29,6 +32,7 @@ import type {
 import { recordAudit } from "./audit.service.js";
 import { parseDeviceName } from "./auth.service.js";
 import {
+  classifyEmailError,
   deliverCampaignEmail,
   htmlToPlainText,
   renderCustomAdminEmail,
@@ -847,6 +851,10 @@ export async function sendAdminEmailCampaign(input: SendAdminEmailInput, req: Re
     status: "PENDING",
   }));
 
+  const settingsDoc = await SiteSettings.getSingleton();
+  const retentionDays = settingsDoc.retention?.emailHistoryDays ?? 30;
+  const expiresAt = new Date(Date.now() + retentionDays * 24 * 60 * 60 * 1000);
+
   const campaign = await EmailCampaign.create({
     subject: cleanSubject,
     bodyHtml: sanitizedBodyHtml,
@@ -862,6 +870,7 @@ export async function sendAdminEmailCampaign(input: SendAdminEmailInput, req: Re
     senderName: actor.name,
     respectMarketingConsent: input.respectMarketingConsent !== false,
     recipients: initialRecipientDocs,
+    expiresAt,
   });
 
   // Deliver individually in controlled batches of 10 so recipients never see each other's email addresses
@@ -889,7 +898,9 @@ export async function sendAdminEmailCampaign(input: SendAdminEmailInput, req: Re
           recipientEntry.sentAt = new Date();
           sentCount += 1;
         } catch (err) {
+          const classified = classifyEmailError(err);
           recipientEntry.status = "FAILED";
+          recipientEntry.errorCategory = classified.category;
           recipientEntry.error =
             err instanceof Error ? err.message.slice(0, 300) : "Delivery failed";
           failedCount += 1;
@@ -935,8 +946,55 @@ export async function sendAdminEmailCampaign(input: SendAdminEmailInput, req: Re
   };
 }
 
+function buildDateRangeFilter(params: {
+  todayOnly?: boolean;
+  dateFrom?: string;
+  dateTo?: string;
+}): Record<string, unknown> | undefined {
+  if (params.todayOnly) {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+    return trusted({ $gte: start, $lte: end });
+  }
+  const range: Record<string, Date> = {};
+  if (params.dateFrom) {
+    const d = new Date(params.dateFrom);
+    if (!Number.isNaN(d.getTime())) range.$gte = d;
+  }
+  if (params.dateTo) {
+    const d = new Date(params.dateTo);
+    if (!Number.isNaN(d.getTime())) {
+      if (params.dateTo.length <= 10) d.setHours(23, 59, 59, 999);
+      range.$lte = d;
+    }
+  }
+  return Object.keys(range).length > 0 ? trusted(range) : undefined;
+}
+
+async function batchDelete(
+  model: { find: (f: Record<string, unknown>) => { select: (s: string) => { limit: (n: number) => { lean: () => Promise<Array<{ _id: unknown }>> } } }; deleteMany: (f: Record<string, unknown>) => Promise<{ deletedCount?: number }> },
+  filter: Record<string, unknown>,
+  batchSize = 500,
+): Promise<number> {
+  let totalDeleted = 0;
+  // Delete in bounded batches so free-tier MongoDB memory/locks stay healthy
+  while (true) {
+    const batch = await model.find(filter).select("_id").limit(batchSize).lean();
+    if (batch.length === 0) break;
+    const ids = batch.map((doc) => doc._id);
+    const res = await model.deleteMany({ _id: trusted({ $in: ids }) });
+    totalDeleted += res.deletedCount ?? 0;
+    if (batch.length < batchSize) break;
+  }
+  return totalDeleted;
+}
+
 export async function listEmailCampaigns(query: ListEmailCampaignsQuery): Promise<{
   campaigns: Record<string, unknown>[];
+  totalStoredRecords: number;
+  retentionDays: number;
   meta: PaginationMeta;
 }> {
   const { page, limit } = normalizePage(query.page, query.limit, 100);
@@ -948,6 +1006,14 @@ export async function listEmailCampaigns(query: ListEmailCampaignsQuery): Promis
   if (query.recipientMode) {
     filter.recipientMode = query.recipientMode;
   }
+  const createdAtFilter = buildDateRangeFilter({
+    todayOnly: query.todayOnly,
+    dateFrom: query.dateFrom,
+    dateTo: query.dateTo,
+  });
+  if (createdAtFilter) {
+    filter.createdAt = createdAtFilter;
+  }
   if (query.search) {
     const safePattern = new RegExp(escapeRegex(query.search), "i");
     filter.$or = trusted([
@@ -957,10 +1023,12 @@ export async function listEmailCampaigns(query: ListEmailCampaignsQuery): Promis
     ]);
   }
 
-  const [total, docs] = await Promise.all([
+  const [total, totalStoredRecords, settingsDoc, docs] = await Promise.all([
     EmailCampaign.countDocuments(filter),
+    EmailCampaign.countDocuments({}),
+    SiteSettings.getSingleton(),
     EmailCampaign.find(filter)
-      .select("-recipients")
+      .select("-recipients -bodyHtml -bodyText")
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
@@ -973,8 +1041,40 @@ export async function listEmailCampaigns(query: ListEmailCampaignsQuery): Promis
       const json = d.toJSON() as unknown as Record<string, unknown>;
       return { ...json, _id: String(d._id), id: String(d._id) };
     }),
+    totalStoredRecords,
+    retentionDays: settingsDoc.retention?.emailHistoryDays ?? 30,
     meta: { page, limit, total, totalPages },
   };
+}
+
+export async function cleanupEmailHistory(
+  scope: "TODAY" | "ALL",
+  req: Request,
+): Promise<{ scope: "TODAY" | "ALL"; deletedCount: number; remainingCount: number }> {
+  const filter: Record<string, unknown> = {};
+  if (scope === "TODAY") {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+    filter.createdAt = trusted({ $gte: start, $lte: end });
+  }
+
+  const deletedCount = await batchDelete(EmailCampaign, filter);
+  const remainingCount = await EmailCampaign.countDocuments({});
+
+  await recordAudit({
+    category: "ADMIN",
+    action: scope === "TODAY" ? "admin.email_history_delete_today" : "admin.email_history_delete_all",
+    outcome: "SUCCESS",
+    actor: req.user?._id,
+    actorEmail: req.user?.email,
+    targetType: "EmailCampaign",
+    req,
+    metadata: { scope, deletedCount, remainingCount },
+  });
+
+  return { scope, deletedCount, remainingCount };
 }
 
 export async function getEmailCampaignDetails(id: string) {
@@ -992,11 +1092,7 @@ export async function getEmailCampaignDetails(id: string) {
   };
 }
 
-export async function listAuditLogs(query: ListAuditLogsQuery): Promise<{
-  logs: Record<string, unknown>[];
-  meta: PaginationMeta;
-}> {
-  const { page, limit } = normalizePage(query.page, query.limit, 100);
+function buildAuditFilter(query: ListAuditLogsQuery): Record<string, unknown> {
   const filter: Record<string, unknown> = {};
 
   if (query.category) {
@@ -1005,17 +1101,53 @@ export async function listAuditLogs(query: ListAuditLogsQuery): Promise<{
   if (query.outcome) {
     filter.outcome = query.outcome;
   }
+  if (query.action) {
+    filter.action = new RegExp(escapeRegex(query.action), "i");
+  }
+  if (query.suspiciousOnly) {
+    filter.suspicious = true;
+  }
+  if (query.user) {
+    if (/^[a-f\d]{24}$/i.test(query.user)) {
+      filter.actor = toObjectId(query.user);
+    } else {
+      filter.actorEmail = new RegExp(escapeRegex(query.user), "i");
+    }
+  }
+  const createdAtFilter = buildDateRangeFilter({
+    todayOnly: query.todayOnly,
+    dateFrom: query.dateFrom,
+    dateTo: query.dateTo,
+  });
+  if (createdAtFilter) {
+    filter.createdAt = createdAtFilter;
+  }
   if (query.search) {
     const safePattern = new RegExp(escapeRegex(query.search), "i");
     filter.$or = trusted([
       { action: trusted({ $regex: safePattern }) },
       { actorEmail: trusted({ $regex: safePattern }) },
       { targetType: trusted({ $regex: safePattern }) },
+      { ip: trusted({ $regex: safePattern }) },
     ]);
   }
 
-  const [total, docs] = await Promise.all([
+  return filter;
+}
+
+export async function listAuditLogs(query: ListAuditLogsQuery): Promise<{
+  logs: Record<string, unknown>[];
+  totalStoredRecords: number;
+  suspiciousCount: number;
+  meta: PaginationMeta;
+}> {
+  const { page, limit } = normalizePage(query.page, query.limit, 100);
+  const filter = buildAuditFilter(query);
+
+  const [total, totalStoredRecords, suspiciousCount, docs] = await Promise.all([
     AuditLog.countDocuments(filter),
+    AuditLog.countDocuments({}),
+    AuditLog.countDocuments({ suspicious: true }),
     AuditLog.find(filter)
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
@@ -1029,6 +1161,252 @@ export async function listAuditLogs(query: ListAuditLogsQuery): Promise<{
       const json = d.toJSON() as unknown as Record<string, unknown>;
       return { ...json, _id: String(d._id), id: String(d._id) };
     }),
+    totalStoredRecords,
+    suspiciousCount,
     meta: { page, limit, total, totalPages },
   };
+}
+
+export async function exportAuditLogs(query: ListAuditLogsQuery) {
+  const filter = buildAuditFilter(query);
+  const docs = await AuditLog.find(filter).sort({ createdAt: -1 }).limit(2000).lean();
+  return {
+    exportedAt: new Date().toISOString(),
+    count: docs.length,
+    logs: docs.map((d) => ({
+      id: String(d._id),
+      category: d.category,
+      action: d.action,
+      outcome: d.outcome,
+      suspicious: Boolean(d.suspicious),
+      severity: d.severity ?? "LOW",
+      actorEmail: d.actorEmail ?? null,
+      targetType: d.targetType ?? null,
+      targetId: d.targetId ?? null,
+      ip: d.ip ?? null,
+      createdAt: d.createdAt,
+      metadata: d.metadata ?? null,
+    })),
+  };
+}
+
+export async function cleanupAuditLogs(
+  input: { scope: "TODAY" | "ALL"; preserveCritical?: boolean },
+  req: Request,
+): Promise<{ scope: "TODAY" | "ALL"; deletedCount: number; remainingCount: number }> {
+  const filter: Record<string, unknown> = {};
+  if (input.scope === "TODAY") {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+    filter.createdAt = trusted({ $gte: start, $lte: end });
+  }
+  if (input.preserveCritical) {
+    filter.severity = trusted({ $ne: "HIGH" });
+  }
+
+  const deletedCount = await batchDelete(AuditLog, filter);
+  const remainingCount = await AuditLog.countDocuments({});
+
+  await recordAudit({
+    category: "ADMIN",
+    action: input.scope === "TODAY" ? "admin.audit_logs_delete_today" : "admin.audit_logs_delete_all",
+    outcome: "SUCCESS",
+    actor: req.user?._id,
+    actorEmail: req.user?.email,
+    targetType: "AuditLog",
+    req,
+    metadata: {
+      scope: input.scope,
+      preserveCritical: Boolean(input.preserveCritical),
+      deletedCount,
+      remainingCount,
+    },
+  });
+
+  return { scope: input.scope, deletedCount, remainingCount };
+}
+
+export async function getSuspiciousActivitySummary() {
+  const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const [recentEvents, failedLogins24h, unauthorizedAdmin24h, lockouts24h, suspendedUsersCount] = await Promise.all([
+    AuditLog.find({ suspicious: true })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .populate("actor", "name email role status")
+      .lean(),
+    AuditLog.countDocuments({ action: "auth.login_failed", createdAt: trusted({ $gte: since24h }) }),
+    AuditLog.countDocuments({ action: "security.rbac_denied", createdAt: trusted({ $gte: since24h }) }),
+    AuditLog.countDocuments({
+      action: trusted({ $in: ["auth.login_locked", "auth.otp_max_attempts"] }),
+      createdAt: trusted({ $gte: since24h }),
+    }),
+    User.countDocuments({ status: "SUSPENDED" }),
+  ]);
+
+  return {
+    thresholds: {
+      failedLoginLockoutThreshold: 5,
+      otpMaxAttemptsThreshold: 5,
+      windowMinutes: 15,
+    },
+    summary24h: {
+      failedLogins: failedLogins24h,
+      unauthorizedAdminAttempts: unauthorizedAdmin24h,
+      accountLockouts: lockouts24h,
+      currentlySuspendedUsers: suspendedUsersCount,
+    },
+    events: recentEvents.map((e) => ({
+      ...e,
+      _id: String(e._id),
+      id: String(e._id),
+    })),
+  };
+}
+
+export async function getDataRetentionOverview() {
+  const settings = await SiteSettings.getSingleton();
+  const [
+    emailCampaigns,
+    auditLogs,
+    moderationLogs,
+    users,
+    sessions,
+    blogs,
+    projects,
+    contactMessages,
+    suppressedEmails,
+  ] = await Promise.all([
+    EmailCampaign.countDocuments({}),
+    AuditLog.countDocuments({}),
+    ModerationLog.countDocuments({}),
+    User.countDocuments({}),
+    Session.countDocuments({}),
+    Blog.countDocuments({}),
+    Project.countDocuments({}),
+    ContactMessage.countDocuments({}),
+    EmailSuppression.countDocuments({}),
+  ]);
+
+  return {
+    retention: settings.retention ?? {
+      emailHistoryDays: 30,
+      auditLogDays: 90,
+      activityLogDays: 60,
+      autoCleanupEnabled: true,
+    },
+    collections: {
+      emailCampaigns,
+      auditLogs,
+      moderationLogs,
+      users,
+      sessions,
+      blogs,
+      projects,
+      contactMessages,
+      suppressedEmails,
+    },
+  };
+}
+
+export async function updateDataRetentionSettings(
+  input: {
+    emailHistoryDays: number;
+    auditLogDays: number;
+    activityLogDays: number;
+    autoCleanupEnabled: boolean;
+  },
+  req: Request,
+) {
+  const updated = await SiteSettings.findOneAndUpdate(
+    { key: "site" },
+    { $set: { retention: input } },
+    { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
+  ).lean();
+
+  await recordAudit({
+    category: "ADMIN",
+    action: "admin.retention_settings_updated",
+    outcome: "SUCCESS",
+    actor: req.user?._id,
+    actorEmail: req.user?.email,
+    targetType: "SiteSettings",
+    req,
+    metadata: input,
+  });
+
+  return { retention: updated?.retention ?? input };
+}
+
+export async function runDataRetentionCleanup(req: Request) {
+  const settings = await SiteSettings.getSingleton();
+  const emailDays = settings.retention?.emailHistoryDays ?? 30;
+  const auditDays = settings.retention?.auditLogDays ?? 90;
+  const moderationDays = settings.retention?.activityLogDays ?? 60;
+
+  const now = Date.now();
+  const emailCutoff = new Date(now - emailDays * 24 * 60 * 60 * 1000);
+  const auditCutoff = new Date(now - auditDays * 24 * 60 * 60 * 1000);
+  const moderationCutoff = new Date(now - moderationDays * 24 * 60 * 60 * 1000);
+
+  const [deletedEmailCampaigns, deletedAuditLogs, deletedModerationLogs, deletedExpiredSessions] = await Promise.all([
+    batchDelete(EmailCampaign, { createdAt: trusted({ $lt: emailCutoff }) }),
+    batchDelete(AuditLog, { createdAt: trusted({ $lt: auditCutoff }), severity: trusted({ $ne: "HIGH" }) }),
+    batchDelete(ModerationLog, { createdAt: trusted({ $lt: moderationCutoff }) }),
+    batchDelete(Session, { expiresAt: trusted({ $lt: new Date() }) }),
+  ]);
+
+  await recordAudit({
+    category: "SYSTEM",
+    action: "admin.retention_cleanup_run",
+    outcome: "SUCCESS",
+    actor: req.user?._id,
+    actorEmail: req.user?.email,
+    req,
+    metadata: {
+      deletedEmailCampaigns,
+      deletedAuditLogs,
+      deletedModerationLogs,
+      deletedExpiredSessions,
+    },
+  });
+
+  return {
+    ranAt: new Date().toISOString(),
+    deletedEmailCampaigns,
+    deletedAuditLogs,
+    deletedModerationLogs,
+    deletedExpiredSessions,
+  };
+}
+
+export async function listSuppressedEmails() {
+  const items = await EmailSuppression.find({}).sort({ lastFailedAt: -1 }).limit(100).lean();
+  return {
+    suppressions: items.map((s) => ({
+      ...s,
+      _id: String(s._id),
+      id: String(s._id),
+    })),
+  };
+}
+
+export async function removeSuppressedEmail(id: string, req: Request) {
+  const deleted = await EmailSuppression.findByIdAndDelete(toObjectId(id)).lean();
+  if (!deleted) {
+    throw AppError.notFound("Suppression record not found");
+  }
+  await recordAudit({
+    category: "ADMIN",
+    action: "admin.email_suppression_removed",
+    outcome: "SUCCESS",
+    actor: req.user?._id,
+    actorEmail: req.user?.email,
+    targetType: "EmailSuppression",
+    targetId: id,
+    req,
+    metadata: { email: deleted.email },
+  });
+  return { deleted: true, id };
 }

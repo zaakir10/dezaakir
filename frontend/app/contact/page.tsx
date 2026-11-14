@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { ArrowUpRight, Mail, MapPin, ShieldCheck, Terminal } from "lucide-react";
+import { ArrowUpRight, Mail, MapPin } from "lucide-react";
+import { MotionReveal } from "@/components/ui/MotionReveal";
 import { ContactForm } from "@/features/contact/ContactForm";
 import { fetchPublicSettings } from "@/lib/api";
 import { siteConfig } from "@/lib/site";
@@ -21,16 +22,6 @@ export default async function ContactPage() {
       handle: "@zaakir10",
       href: social.github || "https://github.com/zaakir10",
     },
-    {
-      label: "Facebook",
-      handle: "facebook.com",
-      href: social.facebook || "https://facebook.com/dezaakir",
-    },
-    {
-      label: "TikTok",
-      handle: "tiktok.com",
-      href: social.tiktok || "https://tiktok.com/@dezaakir",
-    },
     ...(social.linkedin
       ? [
           {
@@ -49,124 +40,125 @@ export default async function ContactPage() {
           },
         ]
       : []),
+    ...(social.facebook
+      ? [
+          {
+            label: "Facebook",
+            handle: "facebook.com",
+            href: social.facebook,
+          },
+        ]
+      : []),
+    ...(social.tiktok
+      ? [
+          {
+            label: "TikTok",
+            handle: "tiktok.com",
+            href: social.tiktok,
+          },
+        ]
+      : []),
   ];
 
   return (
     <main className="bg-navy text-white">
       {/* Masthead */}
-      <section className="border-b border-white/15">
+      <section className="bg-editorial-grid border-b border-white/15">
         <div className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
-          <div className="inline-flex items-center gap-2 border border-white/20 bg-white/[0.03] px-3.5 py-1.5 font-mono text-xs uppercase tracking-widest text-white/80">
-            <Terminal className="h-3.5 w-3.5 text-white" />
-            <span>Direct Communication Channel</span>
-          </div>
-
-          <h1 className="mt-6 text-4xl font-bold tracking-tight text-white sm:text-6xl">
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-white/55">
+            Direct Communication Channel
+          </p>
+          <h1 className="mt-4 max-w-4xl text-4xl font-bold leading-[1.06] tracking-tight text-white sm:text-6xl">
             Let&apos;s Build Something Exceptional Together.
           </h1>
-
           <p className="mt-5 max-w-2xl text-base leading-relaxed text-white/75 sm:text-lg">
             Have a web application project, architectural question, or collaboration in mind? Send
-            a direct message below or connect through my social channels.
+            a direct message below or connect through my verified channels.
           </p>
         </div>
       </section>
 
-      {/* Main Split Contact Workspace */}
+      {/* Balanced Two-Column Contact Workspace */}
       <section className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
-        <div className="grid gap-12 lg:grid-cols-12">
+        <div className="grid gap-12 lg:grid-cols-12 lg:gap-16">
           {/* Left Column: Direct Details & Social Channels */}
-          <div className="space-y-8 lg:col-span-5">
-            <div className="border border-white/15 bg-white/[0.02] p-6 sm:p-8">
-              <h2 className="border-b border-white/10 pb-3 font-mono text-xs font-bold uppercase tracking-widest text-white">
-                Contact Information
-              </h2>
+          <div className="min-w-0 space-y-10 lg:col-span-5">
+            <MotionReveal>
+              <div className="border-t border-white/15 pt-6">
+                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-white/50">
+                  01 · Availability &amp; Details
+                </p>
 
-              <div className="mt-6 space-y-5 text-sm">
-                <div className="flex items-start gap-3.5">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center border border-white/20 bg-navy">
-                    <MapPin className="h-4 w-4 text-white" />
-                  </div>
-                  <div>
-                    <p className="font-mono text-[10px] uppercase tracking-wider text-white/55">
-                      Location
-                    </p>
-                    <p className="mt-0.5 font-semibold text-white">
-                      {settings.location || "Remote · Global"}
-                    </p>
-                  </div>
-                </div>
-
-                {social.email && (
-                  <div className="flex items-start gap-3.5">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center border border-white/20 bg-navy">
-                      <Mail className="h-4 w-4 text-white" />
-                    </div>
+                <dl className="mt-6 divide-y divide-white/10 text-sm">
+                  <div className="flex items-start gap-3.5 py-4">
+                    <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-white/55" aria-hidden="true" />
                     <div>
-                      <p className="font-mono text-[10px] uppercase tracking-wider text-white/55">
-                        Direct Email
-                      </p>
-                      <a
-                        href={`mailto:${social.email}`}
-                        className="mt-0.5 block font-mono text-xs font-semibold text-white underline underline-offset-4"
-                      >
-                        {social.email}
-                      </a>
+                      <dt className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/50">
+                        Location
+                      </dt>
+                      <dd className="mt-1 font-semibold text-white">
+                        {settings.location || "Remote · Global"}
+                      </dd>
                     </div>
                   </div>
-                )}
 
-                <div className="flex items-start gap-3.5">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center border border-white/20 bg-navy">
-                    <ShieldCheck className="h-4 w-4 text-white" />
-                  </div>
-                  <div>
-                    <p className="font-mono text-[10px] uppercase tracking-wider text-white/55">
-                      Protected Delivery
-                    </p>
-                    <p className="mt-0.5 text-xs leading-relaxed text-white/75">
-                      Every submission is validated, rate-limited against automated spam, and
-                      delivered straight to the Dezaakir Administration Console.
-                    </p>
-                  </div>
-                </div>
+                  {social.email && (
+                    <div className="flex items-start gap-3.5 py-4">
+                      <Mail className="mt-0.5 h-4 w-4 shrink-0 text-white/55" aria-hidden="true" />
+                      <div>
+                        <dt className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/50">
+                          Direct Email
+                        </dt>
+                        <dd className="mt-1">
+                          <a
+                            href={`mailto:${social.email}`}
+                            className="font-mono text-xs font-semibold text-white underline underline-offset-4 transition hover:opacity-80"
+                          >
+                            {social.email}
+                          </a>
+                        </dd>
+                      </div>
+                    </div>
+                  )}
+                </dl>
               </div>
-            </div>
 
-            {/* Social Contact Links */}
-            <div className="border border-white/15 bg-white/[0.02] p-6 sm:p-8">
-              <h2 className="border-b border-white/10 pb-3 font-mono text-xs font-bold uppercase tracking-widest text-white">
-                Social Channels
-              </h2>
+              <div className="mt-10 border-t border-white/15 pt-6">
+                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-white/50">
+                  02 · Social Channels
+                </p>
 
-              <div className="mt-5 divide-y divide-white/10">
-                {socialChannels.map((item) => (
-                  <a
-                    key={item.label}
-                    href={item.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="group flex items-center justify-between py-3.5 text-sm transition hover:text-white"
-                  >
-                    <div>
-                      <span className="font-bold text-white">{item.label}</span>
-                      <span className="ml-2 font-mono text-xs text-white/50">
-                        ({item.handle})
+                <div className="mt-4 divide-y divide-white/10">
+                  {socialChannels.map((item) => (
+                    <a
+                      key={item.label}
+                      href={item.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group flex items-center justify-between py-4 text-sm transition hover:text-white"
+                    >
+                      <div>
+                        <span className="font-bold text-white">{item.label}</span>
+                        <span className="ml-2 font-mono text-xs text-white/45">
+                          ({item.handle})
+                        </span>
+                      </div>
+                      <span className="inline-flex items-center gap-1 font-mono text-xs text-white/65 transition group-hover:translate-x-0.5 group-hover:text-white">
+                        <span>Connect</span>
+                        <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
                       </span>
-                    </div>
-                    <span className="inline-flex items-center gap-1 font-mono text-xs text-white/70 transition group-hover:translate-x-0.5 group-hover:text-white">
-                      <span>Connect</span>
-                      <ArrowUpRight className="h-3.5 w-3.5" />
-                    </span>
-                  </a>
-                ))}
+                    </a>
+                  ))}
+                </div>
               </div>
-            </div>
+            </MotionReveal>
           </div>
 
-          {/* Right Column: Contact Form */}
-          <div className="lg:col-span-7">
-            <ContactForm />
+          {/* Right Column: Validated Contact Form */}
+          <div className="min-w-0 lg:col-span-7">
+            <MotionReveal delay={0.08}>
+              <ContactForm />
+            </MotionReveal>
           </div>
         </div>
       </section>

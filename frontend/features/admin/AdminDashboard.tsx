@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
+  AlertTriangle,
   Archive,
   BarChart3,
   BookOpen,
@@ -14,6 +15,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Database,
   Edit3,
   ExternalLink,
   Eye,
@@ -27,6 +29,7 @@ import {
   Lock,
   LogOut,
   Mail,
+  MailCheck,
   Menu,
   MessageSquare,
   PanelLeftClose,
@@ -46,6 +49,7 @@ import {
   UserCheck,
   UserPlus,
   Users,
+  UserX,
   X,
 } from "lucide-react";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
@@ -74,6 +78,14 @@ import {
   AdminSeoSettingsView,
   AdminSiteSettingsView,
 } from "@/features/admin/AdminSystemViews";
+import {
+  AdminDataRetentionView,
+  AdminEmailDeliverabilityView,
+  AdminSuspiciousActivityView,
+  AdminSuspensionHistoryView,
+  AdminUserActivityView,
+  AdminUserModerationView,
+} from "@/features/admin/AdminModerationAndSystemViews";
 import {
   BarChartCard,
   ConfirmDialog,
@@ -114,6 +126,10 @@ export type AdminNavSection =
   | "media"
   | "users"
   | "roles"
+  | "userActivity"
+  | "suspiciousActivity"
+  | "userModeration"
+  | "suspensionHistory"
   | "messages"
   | "emailCenter"
   | "emailHistory"
@@ -121,7 +137,9 @@ export type AdminNavSection =
   | "settings"
   | "seo"
   | "security"
-  | "audit";
+  | "audit"
+  | "dataRetention"
+  | "emailDeliverability";
 
 const DEFAULT_META: PaginationMeta = {
   page: 1,
@@ -1569,6 +1587,26 @@ export function AdminDashboard() {
           icon: UserCheck,
           badge: overview?.stats.users.admins,
         },
+        {
+          id: "userActivity" as const,
+          label: "User Activity",
+          icon: Activity,
+        },
+        {
+          id: "suspiciousActivity" as const,
+          label: "Suspicious Activity",
+          icon: AlertTriangle,
+        },
+        {
+          id: "userModeration" as const,
+          label: "User Moderation",
+          icon: UserX,
+        },
+        {
+          id: "suspensionHistory" as const,
+          label: "Suspension History",
+          icon: Clock,
+        },
       ],
     },
     {
@@ -1601,6 +1639,8 @@ export function AdminDashboard() {
         { id: "seo" as const, label: "SEO Settings", icon: Globe },
         { id: "security" as const, label: "Security", icon: Shield },
         { id: "audit" as const, label: "Audit Logs", icon: ShieldCheck },
+        { id: "dataRetention" as const, label: "Data Retention", icon: Database },
+        { id: "emailDeliverability" as const, label: "Email Deliverability", icon: MailCheck },
       ],
     },
   ];
@@ -1642,6 +1682,22 @@ export function AdminDashboard() {
       title: "Roles and Permissions Governance",
       subtitle: "Least-privilege RBAC administration with confirmation and audit logging",
     },
+    userActivity: {
+      title: "User Activity Monitoring",
+      subtitle: "Track logins, failed authentications, registrations, verifications, and profile changes",
+    },
+    suspiciousActivity: {
+      title: "Suspicious Activity Detection",
+      subtitle: "Review flagged failed logins, lockouts, unauthorized admin attempts, and spam triggers",
+    },
+    userModeration: {
+      title: "User Moderation & Suspensions",
+      subtitle: "Suspend accounts temporarily (1h, 24h, 7d, 30d) or permanently, or reinstate access",
+    },
+    suspensionHistory: {
+      title: "Suspension & Moderation History",
+      subtitle: "Audit trail of manual suspensions, reinstatements, and automatic expirations",
+    },
     messages: {
       title: "Contact Messages & Inbox Management",
       subtitle: "Read, filter, bulk-update, and manage incoming contact inquiries",
@@ -1673,6 +1729,14 @@ export function AdminDashboard() {
     audit: {
       title: "Security & Administrative Audit Logs",
       subtitle: "Immutable record of authentication, role changes, content mutations, and access events",
+    },
+    dataRetention: {
+      title: "Data Retention & Database Optimization",
+      subtitle: "Configure automatic TTL expiration, inspect collection counts, and run batch cleanups",
+    },
+    emailDeliverability: {
+      title: "Email Deliverability & Domain Authentication",
+      subtitle: "Inspect SMTP TLS, SPF/DKIM/DMARC DNS records, bounce suppression, and test delivery",
     },
   };
 
@@ -3653,7 +3717,40 @@ export function AdminDashboard() {
                   onInspectCampaign={(id) => void handleInspectCampaign(id)}
                   inspectedCampaign={inspectedCampaign}
                   onCloseInspector={() => setInspectedCampaign(null)}
+                  onToast={(type, text) => pushToast(type, text)}
+                  onConfirm={(cfg) => askConfirm(cfg)}
                 />
+              )}
+
+              {activeSection === "userActivity" && (
+                <AdminUserActivityView onToast={(type, text) => pushToast(type, text)} />
+              )}
+
+              {activeSection === "suspiciousActivity" && (
+                <AdminSuspiciousActivityView onToast={(type, text) => pushToast(type, text)} />
+              )}
+
+              {activeSection === "userModeration" && currentAdmin && (
+                <AdminUserModerationView
+                  currentAdminId={currentAdmin.id}
+                  onToast={(type, text) => pushToast(type, text)}
+                  onConfirm={(cfg) => askConfirm(cfg)}
+                />
+              )}
+
+              {activeSection === "suspensionHistory" && (
+                <AdminSuspensionHistoryView onToast={(type, text) => pushToast(type, text)} />
+              )}
+
+              {activeSection === "dataRetention" && (
+                <AdminDataRetentionView
+                  onToast={(type, text) => pushToast(type, text)}
+                  onConfirm={(cfg) => askConfirm(cfg)}
+                />
+              )}
+
+              {activeSection === "emailDeliverability" && (
+                <AdminEmailDeliverabilityView onToast={(type, text) => pushToast(type, text)} />
               )}
 
               {/* ========================================================= */}
@@ -3730,6 +3827,8 @@ export function AdminDashboard() {
                     setAuditPage(next);
                     void fetchAuditLogs(next);
                   }}
+                  onToast={(type, text) => pushToast(type, text)}
+                  onConfirm={(cfg) => askConfirm(cfg)}
                 />
               )}
             </>

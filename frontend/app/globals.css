@@ -283,3 +283,22 @@
   border: 1px solid color-mix(in srgb, var(--foreground) 15%, transparent);
   margin: 2rem 0;
 }
+
+/* Subtle architectural grid texture for editorial hero & masthead compositions */
+.bg-editorial-grid {
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--foreground) 5%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--foreground) 5%, transparent) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+/* Editorial lead drop cap for long-form articles & biography */
+.editorial-lead::first-letter {
+  float: left;
+  font-size: 3.5rem;
+  line-height: 0.85;
+  font-weight: 700;
+  padding-right: 0.75rem;
+  padding-top: 0.25rem;
+  color: var(--foreground);
+}

@@ -1,4 +1,4 @@
-export { User, ROLES, USER_STATUSES, type IUser, type UserDocument, type Role, type UserStatus } from "./User.js";
+export { User, ROLES, USER_STATUSES, type IUser, type IUserSuspension, type UserDocument, type Role, type UserStatus } from "./User.js";
 export { Session, type ISession } from "./Session.js";
 export {
   EmailVerification,
@@ -14,8 +14,26 @@ export { Category, CATEGORY_TYPES, type ICategory, type CategoryType } from "./C
 export { Tag, type ITag } from "./Tag.js";
 export { ContactMessage, MESSAGE_STATUSES, type IContactMessage, type MessageStatus } from "./ContactMessage.js";
 export { Media, MEDIA_FORMATS, type IMedia } from "./Media.js";
-export { AuditLog, AUDIT_CATEGORIES, AUDIT_OUTCOMES, type IAuditLog, type AuditCategory, type AuditOutcome } from "./AuditLog.js";
+export {
+  AuditLog,
+  AUDIT_CATEGORIES,
+  AUDIT_OUTCOMES,
+  AUDIT_SEVERITIES,
+  type IAuditLog,
+  type AuditCategory,
+  type AuditOutcome,
+  type AuditSeverity,
+} from "./AuditLog.js";
 export { SiteSettings, SETTINGS_KEY, type ISiteSettings } from "./SiteSettings.js";
+export {
+  ModerationLog,
+  MODERATION_ACTIONS,
+  SUSPENSION_DURATIONS,
+  type IModerationLog,
+  type ModerationAction,
+  type SuspensionDuration,
+} from "./ModerationLog.js";
+export { EmailSuppression, type IEmailSuppression } from "./EmailSuppression.js";
 export {
   EmailCampaign,
   CAMPAIGN_STATUSES,
@@ -40,6 +58,8 @@ import { Media } from "./Media.js";
 import { AuditLog } from "./AuditLog.js";
 import { SiteSettings } from "./SiteSettings.js";
 import { EmailCampaign } from "./EmailCampaign.js";
+import { ModerationLog } from "./ModerationLog.js";
+import { EmailSuppression } from "./EmailSuppression.js";
 
 export const allModels = [
   User,
@@ -55,4 +75,6 @@ export const allModels = [
   AuditLog,
   SiteSettings,
   EmailCampaign,
+  ModerationLog,
+  EmailSuppression,
 ] as const;
