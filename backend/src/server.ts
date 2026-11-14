@@ -4,6 +4,8 @@ import { connectDatabase, disconnectDatabase } from "./config/database.js";
 import { verifySmtpConnection } from "./services/email.service.js";
 import { logger } from "./utils/logger.js";
 
+const app = createApp();
+
 async function start() {
   try {
     await connectDatabase();
@@ -15,7 +17,6 @@ async function start() {
 
   await verifySmtpConnection();
 
-  const app = createApp();
   const server = app.listen(env.PORT, () => {
     logger.info({ port: env.PORT, env: env.NODE_ENV }, "Dezaakir API listening");
   });
@@ -37,4 +38,8 @@ process.on("unhandledRejection", (reason) => {
   logger.error({ err: reason }, "Unhandled promise rejection");
 });
 
-void start();
+if (!process.env.VERCEL) {
+  void start();
+}
+
+export default app;

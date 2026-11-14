@@ -36,8 +36,16 @@ export function assertSecureUri(uri: string, production = isProduction): void {
 }
 
 let listenersAttached = false;
+let pendingConnect: Promise<typeof mongoose> | null = null;
 
 export async function connectDatabase(uri: string = env.MONGODB_URI): Promise<typeof mongoose> {
+  if (mongoose.connection.readyState === 1) {
+    return mongoose;
+  }
+  if (pendingConnect) {
+    return pendingConnect;
+  }
+
   assertSecureUri(uri);
 
   if (!listenersAttached) {
@@ -50,31 +58,37 @@ export async function connectDatabase(uri: string = env.MONGODB_URI): Promise<ty
 
   const isDefaultDevConnect = !isProduction && !isTest && uri === env.MONGODB_URI;
 
-  try {
-    return await mongoose.connect(uri, {
-      serverSelectionTimeoutMS: isDefaultDevConnect ? 4_000 : 10_000,
-      maxPoolSize: 10,
-      retryWrites: true,
-      appName: "dezaakir-api",
-    });
-  } catch (err) {
-    if (isDefaultDevConnect && uri !== LOCAL_DEV_FALLBACK_URI) {
-      logger.warn(
-        {
-          errName: err instanceof Error ? err.name : "Unknown",
-          fallbackUri: LOCAL_DEV_FALLBACK_URI,
-        },
-        "Primary MongoDB URI unreachable (if using MongoDB Atlas, verify your current IP is whitelisted in Network Access). Falling back to local MongoDB for development.",
-      );
-      await mongoose.disconnect().catch(() => undefined);
-      return mongoose.connect(LOCAL_DEV_FALLBACK_URI, {
-        serverSelectionTimeoutMS: 5_000,
+  pendingConnect = (async () => {
+    try {
+      return await mongoose.connect(uri, {
+        serverSelectionTimeoutMS: isDefaultDevConnect ? 4_000 : 10_000,
         maxPoolSize: 10,
-        appName: "dezaakir-api-local",
+        retryWrites: true,
+        appName: "dezaakir-api",
       });
+    } catch (err) {
+      if (isDefaultDevConnect && uri !== LOCAL_DEV_FALLBACK_URI) {
+        logger.warn(
+          {
+            errName: err instanceof Error ? err.name : "Unknown",
+            fallbackUri: LOCAL_DEV_FALLBACK_URI,
+          },
+          "Primary MongoDB URI unreachable (if using MongoDB Atlas, verify your current IP is whitelisted in Network Access). Falling back to local MongoDB for development.",
+        );
+        await mongoose.disconnect().catch(() => undefined);
+        return mongoose.connect(LOCAL_DEV_FALLBACK_URI, {
+          serverSelectionTimeoutMS: 5_000,
+          maxPoolSize: 10,
+          appName: "dezaakir-api-local",
+        });
+      }
+      throw err;
+    } finally {
+      pendingConnect = null;
     }
-    throw err;
-  }
+  })();
+
+  return pendingConnect;
 }
 
 export async function disconnectDatabase(): Promise<void> {

@@ -1,7 +1,8 @@
 import express, { type RequestHandler } from "express";
 import helmet from "helmet";
 import cors from "cors";
-import { allowedOrigins, env, isProduction } from "./config/env.js";
+import { allowedOrigins, env, isProduction, isTest } from "./config/env.js";
+import { connectDatabase, isDatabaseReady } from "./config/database.js";
 import { requestId } from "./middleware/requestId.js";
 import { loadSession } from "./middleware/auth.js";
 import { sanitizeInput } from "./middleware/sanitizeInput.js";
@@ -16,7 +17,7 @@ import { adminRouter } from "./routes/admin.routes.js";
 import { categoriesRouter, tagsRouter } from "./routes/taxonomy.routes.js";
 import { adminMessagesRouter, contactRouter } from "./routes/contact.routes.js";
 import { adminSettingsRouter, settingsRouter } from "./routes/settings.routes.js";
-import { sendError } from "./utils/apiResponse.js";
+import { sendError, sendSuccess } from "./utils/apiResponse.js";
 
 const ALLOWED_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"];
 
@@ -93,9 +94,26 @@ export function createApp() {
   });
   app.use(express.urlencoded({ extended: false, limit: "20kb" }));
   app.use(sanitizeInput);
+
+  // Ensure MongoDB is connected on serverless cold starts (skip /api/health so health probes never hang)
+  app.use(async (req, _res, next) => {
+    if (isTest || isDatabaseReady() || req.path === "/api/health") {
+      return next();
+    }
+    try {
+      await connectDatabase();
+      next();
+    } catch (err) {
+      next(err);
+    }
+  });
+
   app.use(loadSession);
   app.use(csrfProtection);
 
+  app.get("/", (_req, res) => {
+    sendSuccess(res, { service: "dezaakir-api", status: "ok" });
+  });
   app.use("/api/health", healthRouter);
   app.use("/api/auth", authRouter);
   app.use("/api/blogs", blogRouter);
