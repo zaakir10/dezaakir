@@ -1,7 +1,7 @@
 import express, { type RequestHandler } from "express";
 import helmet from "helmet";
 import cors from "cors";
-import { env, isProduction } from "./config/env.js";
+import { allowedOrigins, env, isProduction } from "./config/env.js";
 import { requestId } from "./middleware/requestId.js";
 import { loadSession } from "./middleware/auth.js";
 import { sanitizeInput } from "./middleware/sanitizeInput.js";
@@ -65,7 +65,12 @@ export function createApp() {
 
   app.use(
     cors({
-      origin: env.FRONTEND_URL,
+      origin: (origin, callback) => {
+        // Non-browser clients (curl, server-to-server) send no Origin header.
+        if (!origin) return callback(null, false);
+        if (allowedOrigins.has(origin)) return callback(null, true);
+        return callback(null, false);
+      },
       credentials: true,
       methods: ALLOWED_METHODS,
       allowedHeaders: ["Content-Type", "X-CSRF-Token", "X-Request-Id"],
@@ -76,7 +81,12 @@ export function createApp() {
   const standardJsonParser = express.json({ limit: "100kb", strict: true });
   const mediaJsonParser = express.json({ limit: "8mb", strict: true });
   app.use((req, res, next) => {
-    if (req.path === "/api/admin/media/upload") {
+    if (
+      req.path === "/api/admin/media/upload" ||
+      req.path === "/api/auth/avatar" ||
+      req.path === "/api/admin/emails/send" ||
+      req.path === "/api/admin/emails/preview"
+    ) {
       return mediaJsonParser(req, res, next);
     }
     return standardJsonParser(req, res, next);

@@ -22,7 +22,7 @@ export default function AdminPage() {
     );
   }
 
-  if (!user || user.role !== "ADMIN") {
+  if (!user || (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN")) {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center bg-navy px-4 text-center text-white">
         <div className="max-w-md border border-white/25 bg-white/[0.02] p-8">

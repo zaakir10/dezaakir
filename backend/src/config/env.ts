@@ -19,6 +19,7 @@ const EnvSchema = z
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
     PORT: z.coerce.number().int().min(1).max(65535).default(4000),
     FRONTEND_URL: z.url(),
+    CORS_ORIGINS: z.string().default(""),
     TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(0),
     LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
 
@@ -79,3 +80,24 @@ function loadEnv(): Env {
 export const env = loadEnv();
 export const isProduction = env.NODE_ENV === "production";
 export const isTest = env.NODE_ENV === "test";
+
+/**
+ * Set of allowed browser origins for CORS and CSRF validation.
+ * Always includes `FRONTEND_URL`'s origin, plus any comma-separated URLs in `CORS_ORIGINS`.
+ */
+export const allowedOrigins: ReadonlySet<string> = new Set(
+  [
+    new URL(env.FRONTEND_URL).origin,
+    ...env.CORS_ORIGINS.split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((raw) => {
+        try {
+          return new URL(raw).origin;
+        } catch {
+          return "";
+        }
+      })
+      .filter(Boolean),
+  ],
+);

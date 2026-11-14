@@ -9,6 +9,7 @@ import {
   BarChart3,
   BookOpen,
   Calendar,
+  CheckCircle2,
   CheckSquare,
   ChevronLeft,
   ChevronRight,
@@ -20,8 +21,10 @@ import {
   Folder,
   FolderKanban,
   Globe,
+  History,
   Image as ImageIcon,
   LayoutDashboard,
+  Lock,
   LogOut,
   Mail,
   Menu,
@@ -31,13 +34,17 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Send,
   Settings,
+  Shield,
   ShieldCheck,
   Sparkles,
   Square,
   Tag,
   Trash2,
   Upload,
+  UserCheck,
+  UserPlus,
   Users,
   X,
 } from "lucide-react";
@@ -48,11 +55,19 @@ import { useAuth } from "@/features/auth/AuthContext";
 import {
   AdminCategoriesView,
   AdminMediaLibraryView,
-  AdminMessagesView,
   AdminTagsView,
-  AdminUsersView,
   slugifyText,
 } from "@/features/admin/AdminManagementViews";
+import {
+  AdminAdvancedMessagesView,
+  AdminAdvancedUsersView,
+  AdminEmailCenterView,
+  AdminEmailHistoryView,
+  AdminRolesPermissionsView,
+  AdminSecurityCenterView,
+  AdminTaxonomyCombinedView,
+  type UsersSummaryCounts,
+} from "@/features/admin/AdminEnterpriseViews";
 import {
   AdminAnalyticsView,
   AdminAuditLogsView,
@@ -77,10 +92,12 @@ import type {
   BlogArticle,
   CategoryItem,
   ContactMessageItem,
+  EmailCampaignItem,
   ImageRef,
   MediaItem,
   PaginationMeta,
   ProjectItem,
+  Role,
   SessionInfo,
   SiteSettingsData,
   TagItem,
@@ -91,14 +108,19 @@ export type AdminNavSection =
   | "dashboard"
   | "blogs"
   | "projects"
+  | "taxonomy"
   | "categories"
   | "tags"
   | "media"
-  | "messages"
   | "users"
+  | "roles"
+  | "messages"
+  | "emailCenter"
+  | "emailHistory"
   | "analytics"
   | "settings"
   | "seo"
+  | "security"
   | "audit";
 
 const DEFAULT_META: PaginationMeta = {
@@ -234,17 +256,60 @@ export function AdminDashboard() {
   const [uploadAlt, setUploadAlt] = useState("");
   const [uploadingMedia, setUploadingMedia] = useState(false);
 
-  // Contact Messages Filters
+  // Contact Messages Filters, Pagination & Bulk Selection
   const [messageStatusFilter, setMessageStatusFilter] = useState("");
   const [messageSearch, setMessageSearch] = useState("");
+  const [messagePage, setMessagePage] = useState(1);
+  const [messagesMeta, setMessagesMeta] = useState<PaginationMeta>(DEFAULT_META);
+  const [messagesCounts, setMessagesCounts] = useState<
+    { total: number; unread: number; read: number; archived: number } | undefined
+  >(undefined);
+  const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
 
-  // Users Filters & Inspector State
+  // Users Filters, Sorting, Pagination & Inspector State
   const [userSearch, setUserSearch] = useState("");
   const [userRoleFilter, setUserRoleFilter] = useState("");
   const [userStatusFilter, setUserStatusFilter] = useState("");
+  const [userVerifiedFilter, setUserVerifiedFilter] = useState("");
+  const [userSortBy, setUserSortBy] = useState<
+    "createdAt" | "lastLoginAt" | "name" | "email" | "role" | "status"
+  >("createdAt");
+  const [userSortOrder, setUserSortOrder] = useState<"asc" | "desc">("desc");
+  const [userPage, setUserPage] = useState(1);
+  const [usersMeta, setUsersMeta] = useState<PaginationMeta>(DEFAULT_META);
+  const [usersSummary, setUsersSummary] = useState<UsersSummaryCounts | undefined>(undefined);
   const [inspectedUser, setInspectedUser] = useState<User | null>(null);
   const [inspectedSessions, setInspectedSessions] = useState<SessionInfo[]>([]);
   const [inspectedActivity, setInspectedActivity] = useState<AuditLogItem[]>([]);
+
+  // Email Center & Campaign History State
+  const [emailRecipientMode, setEmailRecipientMode] = useState<"SINGLE" | "SELECTED" | "ALL">(
+    "SINGLE",
+  );
+  const [selectedRecipientIds, setSelectedRecipientIds] = useState<string[]>([]);
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailBodyHtml, setEmailBodyHtml] = useState(
+    "<p>Write your official announcement or notification here...</p>",
+  );
+  const [emailTestAddress, setEmailTestAddress] = useState("");
+  const [emailRespectConsent, setEmailRespectConsent] = useState(true);
+  const [emailPreviewHtml, setEmailPreviewHtml] = useState<string | null>(null);
+  const [emailPreviewLoading, setEmailPreviewLoading] = useState(false);
+  const [emailSending, setEmailSending] = useState(false);
+  const [lastCampaignResult, setLastCampaignResult] = useState<EmailCampaignItem | null>(null);
+  const [campaigns, setCampaigns] = useState<EmailCampaignItem[]>([]);
+  const [campaignsMeta, setCampaignsMeta] = useState<PaginationMeta>(DEFAULT_META);
+  const [campaignsLoading, setCampaignsLoading] = useState(false);
+  const [campaignSearch, setCampaignSearch] = useState("");
+  const [campaignStatusFilter, setCampaignStatusFilter] = useState("");
+  const [campaignPage, setCampaignPage] = useState(1);
+  const [inspectedCampaign, setInspectedCampaign] = useState<EmailCampaignItem | null>(null);
+
+  // Admin MFA Enrollment State
+  const [mfaSecret, setMfaSecret] = useState<string | null>(null);
+  const [mfaOtpauthUri, setMfaOtpauthUri] = useState<string | null>(null);
+  const [mfaRecoveryCodes, setMfaRecoveryCodes] = useState<string[] | null>(null);
+  const [mfaBusy, setMfaBusy] = useState(false);
 
   // Audit Log Filters
   const [auditCategoryFilter, setAuditCategoryFilter] = useState("");
@@ -287,7 +352,7 @@ export function AdminDashboard() {
         if (blogStatusFilter) params.set("status", blogStatusFilter);
         if (blogCategoryFilter) params.set("category", blogCategoryFilter);
         const res = await apiFetch<{ blogs: BlogArticle[] }>(
-          `/api/admin/blogs?${params.toString()}`
+          `/api/admin/blogs?${params.toString()}`,
         );
         const list = res.data.blogs ?? [];
         setBlogs(list);
@@ -304,7 +369,7 @@ export function AdminDashboard() {
         setBlogsLoading(false);
       }
     },
-    [blogPage, blogSort, blogSearch, blogStatusFilter, blogCategoryFilter]
+    [blogPage, blogSort, blogSearch, blogStatusFilter, blogCategoryFilter],
   );
 
   const fetchProjects = useCallback(
@@ -321,7 +386,7 @@ export function AdminDashboard() {
         if (projectStatusFilter) params.set("status", projectStatusFilter);
         if (projectCategoryFilter) params.set("category", projectCategoryFilter);
         const res = await apiFetch<{ projects: ProjectItem[] }>(
-          `/api/admin/projects?${params.toString()}`
+          `/api/admin/projects?${params.toString()}`,
         );
         const list = res.data.projects ?? [];
         setProjects(list);
@@ -337,7 +402,7 @@ export function AdminDashboard() {
         setProjectsLoading(false);
       }
     },
-    [projectPage, projectSort, projectSearch, projectStatusFilter, projectCategoryFilter]
+    [projectPage, projectSort, projectSearch, projectStatusFilter, projectCategoryFilter],
   );
 
   const fetchMedia = useCallback(async () => {
@@ -353,34 +418,112 @@ export function AdminDashboard() {
     }
   }, [mediaFolderFilter, mediaSearch]);
 
-  const fetchMessages = useCallback(async () => {
-    setMessagesLoading(true);
-    try {
-      const params = new URLSearchParams({ limit: "30" });
-      if (messageStatusFilter) params.set("status", messageStatusFilter);
-      if (messageSearch.trim()) params.set("search", messageSearch.trim());
-      const res = await apiFetch<{ messages: ContactMessageItem[] }>(
-        `/api/admin/messages?${params.toString()}`
-      );
-      setMessages(res.data.messages ?? []);
-    } finally {
-      setMessagesLoading(false);
-    }
-  }, [messageStatusFilter, messageSearch]);
+  const fetchMessages = useCallback(
+    async (pageOverride?: number) => {
+      setMessagesLoading(true);
+      try {
+        const p = pageOverride ?? messagePage;
+        const params = new URLSearchParams({ page: String(p), limit: "20" });
+        if (messageStatusFilter) params.set("status", messageStatusFilter);
+        if (messageSearch.trim()) params.set("search", messageSearch.trim());
+        const res = await apiFetch<{
+          messages: ContactMessageItem[];
+          counts?: { total: number; unread: number; read: number; archived: number };
+        }>(`/api/admin/messages?${params.toString()}`);
+        const list = res.data.messages ?? [];
+        setMessages(list);
+        setSelectedMessageIds([]);
+        if (res.data.counts) {
+          setMessagesCounts(res.data.counts);
+        }
+        if (res.meta) {
+          setMessagesMeta({
+            page: Number(res.meta.page ?? p),
+            limit: Number(res.meta.limit ?? 20),
+            total: Number(res.meta.total ?? list.length),
+            totalPages: Number(res.meta.totalPages ?? 1),
+          });
+        }
+      } finally {
+        setMessagesLoading(false);
+      }
+    },
+    [messagePage, messageStatusFilter, messageSearch],
+  );
 
-  const fetchUsers = useCallback(async () => {
-    setUsersLoading(true);
-    try {
-      const params = new URLSearchParams({ limit: "30" });
-      if (userSearch.trim()) params.set("search", userSearch.trim());
-      if (userRoleFilter) params.set("role", userRoleFilter);
-      if (userStatusFilter) params.set("status", userStatusFilter);
-      const res = await apiFetch<{ users: User[] }>(`/api/admin/users?${params.toString()}`);
-      setUsers(res.data.users ?? []);
-    } finally {
-      setUsersLoading(false);
-    }
-  }, [userSearch, userRoleFilter, userStatusFilter]);
+  const fetchUsers = useCallback(
+    async (pageOverride?: number) => {
+      setUsersLoading(true);
+      try {
+        const p = pageOverride ?? userPage;
+        const params = new URLSearchParams({
+          page: String(p),
+          limit: "25",
+          sortBy: userSortBy,
+          sortOrder: userSortOrder,
+        });
+        if (userSearch.trim()) params.set("search", userSearch.trim());
+        if (userRoleFilter) params.set("role", userRoleFilter);
+        if (userStatusFilter) params.set("status", userStatusFilter);
+        if (userVerifiedFilter) params.set("emailVerified", userVerifiedFilter);
+        const res = await apiFetch<{ users: User[]; summary?: UsersSummaryCounts }>(
+          `/api/admin/users?${params.toString()}`,
+        );
+        const list = res.data.users ?? [];
+        setUsers(list);
+        if (res.data.summary) {
+          setUsersSummary(res.data.summary);
+        }
+        if (res.meta) {
+          setUsersMeta({
+            page: Number(res.meta.page ?? p),
+            limit: Number(res.meta.limit ?? 25),
+            total: Number(res.meta.total ?? list.length),
+            totalPages: Number(res.meta.totalPages ?? 1),
+          });
+        }
+      } finally {
+        setUsersLoading(false);
+      }
+    },
+    [
+      userPage,
+      userSearch,
+      userRoleFilter,
+      userStatusFilter,
+      userVerifiedFilter,
+      userSortBy,
+      userSortOrder,
+    ],
+  );
+
+  const fetchEmailCampaigns = useCallback(
+    async (pageOverride?: number) => {
+      setCampaignsLoading(true);
+      try {
+        const p = pageOverride ?? campaignPage;
+        const params = new URLSearchParams({ page: String(p), limit: "20" });
+        if (campaignStatusFilter) params.set("status", campaignStatusFilter);
+        if (campaignSearch.trim()) params.set("search", campaignSearch.trim());
+        const res = await apiFetch<{ campaigns: EmailCampaignItem[] }>(
+          `/api/admin/emails/history?${params.toString()}`,
+        );
+        const list = res.data.campaigns ?? [];
+        setCampaigns(list);
+        if (res.meta) {
+          setCampaignsMeta({
+            page: Number(res.meta.page ?? p),
+            limit: Number(res.meta.limit ?? 20),
+            total: Number(res.meta.total ?? list.length),
+            totalPages: Number(res.meta.totalPages ?? 1),
+          });
+        }
+      } finally {
+        setCampaignsLoading(false);
+      }
+    },
+    [campaignPage, campaignStatusFilter, campaignSearch],
+  );
 
   const fetchAuditLogs = useCallback(
     async (pageOverride?: number) => {
@@ -390,9 +533,9 @@ export function AdminDashboard() {
         const params = new URLSearchParams({ page: String(p), limit: "25" });
         if (auditCategoryFilter) params.set("category", auditCategoryFilter);
         if (auditOutcomeFilter) params.set("outcome", auditOutcomeFilter);
-        if (auditActionSearch.trim()) params.set("action", auditActionSearch.trim());
+        if (auditActionSearch.trim()) params.set("search", auditActionSearch.trim());
         const res = await apiFetch<{ logs: AuditLogItem[] }>(
-          `/api/admin/audit-logs?${params.toString()}`
+          `/api/admin/audit-logs?${params.toString()}`,
         );
         const list = res.data.logs ?? [];
         setAuditLogs(list);
@@ -408,7 +551,7 @@ export function AdminDashboard() {
         setAuditLoading(false);
       }
     },
-    [auditPage, auditCategoryFilter, auditOutcomeFilter, auditActionSearch]
+    [auditPage, auditCategoryFilter, auditOutcomeFilter, auditActionSearch],
   );
 
   const loadAllDashboardData = useCallback(async () => {
@@ -419,15 +562,16 @@ export function AdminDashboard() {
         fetchBlogs(1),
         fetchProjects(1),
         fetchMedia(),
-        fetchMessages(),
-        fetchUsers(),
+        fetchMessages(1),
+        fetchUsers(1),
+        fetchEmailCampaigns(1),
         fetchAuditLogs(1),
       ]);
     } catch (err) {
       pushToast(
         "error",
         "Failed to synchronize dashboard",
-        err instanceof Error ? err.message : "Unexpected network error"
+        err instanceof Error ? err.message : "Unexpected network error",
       );
     } finally {
       setInitialLoading(false);
@@ -440,6 +584,7 @@ export function AdminDashboard() {
     fetchMedia,
     fetchMessages,
     fetchUsers,
+    fetchEmailCampaigns,
     fetchAuditLogs,
     pushToast,
   ]);
@@ -458,8 +603,16 @@ export function AdminDashboard() {
   }, [projectStatusFilter, projectCategoryFilter, projectSort]);
 
   useEffect(() => {
-    if (!initialLoading) void fetchMessages();
+    if (!initialLoading) void fetchMessages(1);
   }, [messageStatusFilter]);
+
+  useEffect(() => {
+    if (!initialLoading) void fetchUsers(1);
+  }, [userRoleFilter, userStatusFilter, userVerifiedFilter, userSortBy, userSortOrder]);
+
+  useEffect(() => {
+    if (!initialLoading) void fetchEmailCampaigns(1);
+  }, [campaignStatusFilter]);
 
   useEffect(() => {
     if (!initialLoading) void fetchMedia();
@@ -894,15 +1047,19 @@ export function AdminDashboard() {
   // Messages Handlers
   const handleUpdateMessageStatus = async (
     id: string,
-    status: "NEW" | "READ" | "ARCHIVED"
+    status: "NEW" | "READ" | "ARCHIVED",
   ) => {
     try {
       await apiFetch(`/api/admin/messages/${id}`, {
         method: "PATCH",
         body: JSON.stringify({ status }),
       });
-      pushToast("success", "Message updated", `Marked as ${status}.`);
-      await Promise.all([fetchMessages(), fetchOverviewAndTaxonomy()]);
+      pushToast(
+        "success",
+        "Message updated",
+        status === "NEW" ? "Marked as Unread." : `Marked as ${status}.`,
+      );
+      await Promise.all([fetchMessages(messagePage), fetchOverviewAndTaxonomy()]);
     } catch (err) {
       pushToast("error", "Update failed", err instanceof Error ? err.message : "Error");
     }
@@ -919,7 +1076,7 @@ export function AdminDashboard() {
           await apiFetch(`/api/admin/messages/${msg.id}`, { method: "DELETE" });
           pushToast("success", "Message deleted", "Inquiry removed from inbox.");
           setConfirmState(null);
-          await Promise.all([fetchMessages(), fetchOverviewAndTaxonomy()]);
+          await Promise.all([fetchMessages(messagePage), fetchOverviewAndTaxonomy()]);
         } catch (err) {
           pushToast("error", "Delete failed", err instanceof Error ? err.message : "Error");
         } finally {
@@ -929,10 +1086,105 @@ export function AdminDashboard() {
     });
   };
 
-  // User Management Handlers
+  const handleBulkMessagesAction = (
+    action: "MARK_READ" | "MARK_UNREAD" | "MARK_ALL_READ" | "DELETE_SELECTED" | "DELETE_ALL",
+  ) => {
+    if (action === "DELETE_ALL") {
+      askConfirm({
+        title: "Delete ALL Contact Messages (Irreversible)",
+        description:
+          "WARNING: You are about to permanently delete EVERY contact message in the inbox. This action is irreversible and will be recorded in the Security Audit Log.",
+        confirmLabel: "Permanently Delete All Messages",
+        onConfirm: async () => {
+          setConfirmBusy(true);
+          try {
+            const res = await apiFetch<{ affectedCount: number }>("/api/admin/messages/bulk", {
+              method: "POST",
+              body: JSON.stringify({ action: "DELETE_ALL", confirm: true }),
+            });
+            pushToast(
+              "success",
+              "All messages deleted",
+              `Deleted ${res.data.affectedCount} message(s).`,
+            );
+            setConfirmState(null);
+            await Promise.all([fetchMessages(1), fetchOverviewAndTaxonomy()]);
+          } catch (err) {
+            pushToast("error", "Bulk delete failed", err instanceof Error ? err.message : "Error");
+          } finally {
+            setConfirmBusy(false);
+          }
+        },
+      });
+      return;
+    }
+
+    if (action === "DELETE_SELECTED") {
+      if (selectedMessageIds.length === 0) return;
+      askConfirm({
+        title: `Delete ${selectedMessageIds.length} Selected Message(s)`,
+        description: `Permanently delete ${selectedMessageIds.length} selected contact message(s)? This action cannot be undone.`,
+        confirmLabel: "Delete Selected",
+        onConfirm: async () => {
+          setConfirmBusy(true);
+          try {
+            const res = await apiFetch<{ affectedCount: number }>("/api/admin/messages/bulk", {
+              method: "POST",
+              body: JSON.stringify({ action: "DELETE_SELECTED", ids: selectedMessageIds }),
+            });
+            pushToast(
+              "success",
+              "Selected messages deleted",
+              `Removed ${res.data.affectedCount} message(s).`,
+            );
+            setConfirmState(null);
+            await Promise.all([fetchMessages(messagePage), fetchOverviewAndTaxonomy()]);
+          } catch (err) {
+            pushToast("error", "Bulk delete failed", err instanceof Error ? err.message : "Error");
+          } finally {
+            setConfirmBusy(false);
+          }
+        },
+      });
+      return;
+    }
+
+    void (async () => {
+      try {
+        const res = await apiFetch<{ affectedCount: number }>("/api/admin/messages/bulk", {
+          method: "POST",
+          body: JSON.stringify({
+            action,
+            ...(action === "MARK_ALL_READ" ? {} : { ids: selectedMessageIds }),
+          }),
+        });
+        pushToast(
+          "success",
+          "Bulk update completed",
+          `Updated ${res.data.affectedCount} message(s).`,
+        );
+        await Promise.all([fetchMessages(messagePage), fetchOverviewAndTaxonomy()]);
+      } catch (err) {
+        pushToast("error", "Bulk update failed", err instanceof Error ? err.message : "Error");
+      }
+    })();
+  };
+
+  // User Management & Role Governance Handlers
+  const handleToggleUserSort = (
+    field: "createdAt" | "lastLoginAt" | "name" | "email" | "role" | "status",
+  ) => {
+    if (userSortBy === field) {
+      setUserSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setUserSortBy(field);
+      setUserSortOrder("desc");
+    }
+  };
+
   const handleUpdateUser = (
     u: User,
-    patch: { status?: "ACTIVE" | "SUSPENDED" | "PENDING"; emailVerified?: boolean }
+    patch: { status?: "ACTIVE" | "SUSPENDED" | "PENDING"; emailVerified?: boolean },
   ) => {
     if (patch.status === "SUSPENDED") {
       askConfirm({
@@ -948,7 +1200,7 @@ export function AdminDashboard() {
             });
             pushToast("success", "User suspended", `${u.email} has been suspended.`);
             setConfirmState(null);
-            await Promise.all([fetchUsers(), fetchOverviewAndTaxonomy()]);
+            await Promise.all([fetchUsers(userPage), fetchOverviewAndTaxonomy()]);
           } catch (err) {
             pushToast("error", "Update failed", err instanceof Error ? err.message : "Error");
           } finally {
@@ -966,26 +1218,67 @@ export function AdminDashboard() {
           body: JSON.stringify(patch),
         });
         pushToast("success", "User account updated", `${u.email} updated.`);
-        await Promise.all([fetchUsers(), fetchOverviewAndTaxonomy()]);
+        await Promise.all([fetchUsers(userPage), fetchOverviewAndTaxonomy()]);
       } catch (err) {
         pushToast("error", "Update failed", err instanceof Error ? err.message : "Error");
       }
     })();
   };
 
+  const handleChangeUserRole = (u: User, newRole: Role) => {
+    if (u.role === newRole) return;
+    askConfirm({
+      title: `Confirm Role Change: ${u.name}`,
+      description: `Change role of ${u.name} (${u.email}) from ${u.role} to ${newRole}? This action updates privileges immediately and records an immutable Audit Log entry.`,
+      confirmLabel: `Assign ${newRole}`,
+      onConfirm: async () => {
+        setConfirmBusy(true);
+        try {
+          const res = await apiFetch<{ user: User }>(`/api/admin/users/${u.id}/role`, {
+            method: "PATCH",
+            body: JSON.stringify({ role: newRole }),
+          });
+          pushToast(
+            "success",
+            "User role updated",
+            `${u.email} is now assigned the ${newRole} role.`,
+          );
+          if (inspectedUser && inspectedUser.id === u.id) {
+            setInspectedUser(res.data.user);
+          }
+          setConfirmState(null);
+          await Promise.all([fetchUsers(userPage), fetchOverviewAndTaxonomy(), fetchAuditLogs(1)]);
+        } catch (err) {
+          pushToast(
+            "error",
+            "Role change rejected",
+            err instanceof Error ? err.message : "Insufficient permissions",
+          );
+        } finally {
+          setConfirmBusy(false);
+        }
+      },
+    });
+  };
+
+  const handleEmailSingleUser = (u: User) => {
+    setEmailRecipientMode("SINGLE");
+    setSelectedRecipientIds([u.id]);
+    setEmailSubject(`Message from Dezaakir Administration`);
+    setActiveSection("emailCenter");
+  };
+
   const handleInspectUser = async (u: User) => {
     setInspectedUser(u);
     try {
-      const [detailsRes, logsRes] = await Promise.all([
-        apiFetch<{ user: User; sessions: SessionInfo[] }>(`/api/admin/users/${u.id}`),
-        apiFetch<{ logs: AuditLogItem[] }>(`/api/admin/audit-logs?limit=25`),
-      ]);
+      const detailsRes = await apiFetch<{
+        user: User;
+        sessions: SessionInfo[];
+        recentActivity: AuditLogItem[];
+      }>(`/api/admin/users/${u.id}`);
+      setInspectedUser(detailsRes.data.user);
       setInspectedSessions(detailsRes.data.sessions ?? []);
-      setInspectedActivity(
-        (logsRes.data.logs ?? []).filter(
-          (l: AuditLogItem) => l.actorEmail === u.email || l.targetId === u.id
-        )
-      );
+      setInspectedActivity(detailsRes.data.recentActivity ?? []);
     } catch {
       setInspectedSessions([]);
       setInspectedActivity([]);
@@ -1013,6 +1306,169 @@ export function AdminDashboard() {
     });
   };
 
+  // Email Center Handlers
+  const handlePreviewAdminEmail = async () => {
+    if (!emailSubject.trim()) {
+      pushToast("error", "Subject required", "Enter a subject line before previewing.");
+      return;
+    }
+    setEmailPreviewLoading(true);
+    try {
+      const res = await apiFetch<{ html: string }>("/api/admin/emails/preview", {
+        method: "POST",
+        body: JSON.stringify({
+          subject: emailSubject.trim(),
+          bodyHtml: emailBodyHtml,
+        }),
+      });
+      setEmailPreviewHtml(res.data.html);
+    } catch (err) {
+      pushToast(
+        "error",
+        "Preview failed",
+        err instanceof Error ? err.message : "Could not render email preview",
+      );
+    } finally {
+      setEmailPreviewLoading(false);
+    }
+  };
+
+  const handleSendTestEmail = async () => {
+    if (!emailSubject.trim()) {
+      pushToast("error", "Subject required", "Please enter an email subject first.");
+      return;
+    }
+    setEmailSending(true);
+    try {
+      const res = await apiFetch<{ campaign: EmailCampaignItem }>("/api/admin/emails/send", {
+        method: "POST",
+        body: JSON.stringify({
+          recipientMode: "TEST",
+          testEmail: (emailTestAddress || currentAdmin?.email || "").trim(),
+          subject: emailSubject.trim(),
+          bodyHtml: emailBodyHtml,
+        }),
+      });
+      setLastCampaignResult(res.data.campaign);
+      pushToast(
+        "success",
+        "Test email sent",
+        `Delivered test email to ${emailTestAddress || currentAdmin?.email}.`,
+      );
+      await fetchEmailCampaigns(1);
+    } catch (err) {
+      pushToast("error", "Test email failed", err instanceof Error ? err.message : "Error");
+    } finally {
+      setEmailSending(false);
+    }
+  };
+
+  const handleDispatchCampaign = () => {
+    if (!emailSubject.trim()) {
+      pushToast("error", "Subject required", "Please provide an email subject line.");
+      return;
+    }
+    if (emailRecipientMode !== "ALL" && selectedRecipientIds.length === 0) {
+      pushToast("error", "Recipients required", "Please select at least one recipient user.");
+      return;
+    }
+
+    const targetDesc =
+      emailRecipientMode === "ALL"
+        ? "ALL active verified users"
+        : `${selectedRecipientIds.length} selected user(s)`;
+
+    askConfirm({
+      title: "Confirm Email Campaign Dispatch",
+      description: `Send "${emailSubject.trim()}" to ${targetDesc}? Each recipient will receive an individually addressed email.`,
+      confirmLabel: "Send Email Campaign",
+      onConfirm: async () => {
+        setConfirmBusy(true);
+        setEmailSending(true);
+        try {
+          const res = await apiFetch<{ campaign: EmailCampaignItem }>("/api/admin/emails/send", {
+            method: "POST",
+            body: JSON.stringify({
+              recipientMode: emailRecipientMode,
+              ...(emailRecipientMode !== "ALL" ? { recipientIds: selectedRecipientIds } : {}),
+              subject: emailSubject.trim(),
+              bodyHtml: emailBodyHtml,
+              respectMarketingConsent: emailRespectConsent,
+            }),
+          });
+          setLastCampaignResult(res.data.campaign);
+          pushToast(
+            "success",
+            "Campaign dispatched",
+            `Sent to ${res.data.campaign.sentCount} of ${res.data.campaign.recipientCount} recipient(s).`,
+          );
+          setConfirmState(null);
+          await Promise.all([
+            fetchEmailCampaigns(1),
+            fetchOverviewAndTaxonomy(),
+            fetchAuditLogs(1),
+          ]);
+        } catch (err) {
+          pushToast(
+            "error",
+            "Campaign dispatch failed",
+            err instanceof Error ? err.message : "Could not send campaign",
+          );
+        } finally {
+          setConfirmBusy(false);
+          setEmailSending(false);
+        }
+      },
+    });
+  };
+
+  const handleInspectCampaign = async (id: string) => {
+    try {
+      const res = await apiFetch<{ campaign: EmailCampaignItem }>(
+        `/api/admin/emails/history/${id}`,
+      );
+      setInspectedCampaign(res.data.campaign);
+    } catch (err) {
+      pushToast("error", "Load failed", err instanceof Error ? err.message : "Error");
+    }
+  };
+
+  // Security MFA Handlers
+  const handleSetupMfa = async () => {
+    setMfaBusy(true);
+    try {
+      const res = await apiFetch<{ secret: string; otpauthUri: string }>("/api/auth/mfa/setup", {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      setMfaSecret(res.data.secret);
+      setMfaOtpauthUri(res.data.otpauthUri);
+      pushToast("info", "MFA secret generated", "Add the secret key to your authenticator app.");
+    } catch (err) {
+      pushToast("error", "MFA setup error", err instanceof Error ? err.message : "Error");
+    } finally {
+      setMfaBusy(false);
+    }
+  };
+
+  const handleEnableMfa = async (code: string) => {
+    setMfaBusy(true);
+    try {
+      const res = await apiFetch<{ recoveryCodes: string[] }>("/api/auth/mfa/enable", {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      });
+      setMfaRecoveryCodes(res.data.recoveryCodes);
+      setMfaSecret(null);
+      pushToast("success", "MFA enabled", "TOTP multi-factor authentication is now active.");
+      await fetchAuditLogs(1);
+    } catch (err) {
+      pushToast("error", "Invalid TOTP code", err instanceof Error ? err.message : "Error");
+    } finally {
+      setMfaBusy(false);
+    }
+  };
+
   // Site & SEO Settings Save Handler
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1029,7 +1485,7 @@ export function AdminDashboard() {
       pushToast(
         "error",
         "Settings save failed",
-        err instanceof Error ? err.message : "Validation error"
+        err instanceof Error ? err.message : "Validation error",
       );
     } finally {
       setSaving(false);
@@ -1052,7 +1508,8 @@ export function AdminDashboard() {
     setMediaPickerTarget(null);
   };
 
-  const unreadMessagesCount = overview?.stats.messages.unread ?? 0;
+  const unreadMessagesCount =
+    messagesCounts?.unread ?? overview?.stats.messages.unread ?? 0;
 
   const navGroups: Array<{
     label: string;
@@ -1066,16 +1523,14 @@ export function AdminDashboard() {
   }> = [
     {
       label: "Overview",
-      items: [
-        { id: "dashboard" as const, label: "Dashboard", icon: LayoutDashboard },
-      ],
+      items: [{ id: "dashboard" as const, label: "Dashboard", icon: LayoutDashboard }],
     },
     {
       label: "Content Management",
       items: [
         {
           id: "blogs" as const,
-          label: "Blog Posts",
+          label: "Blog Management",
           icon: FileText,
           badge: overview?.stats.blogs.total,
         },
@@ -1086,22 +1541,33 @@ export function AdminDashboard() {
           badge: overview?.stats.projects.total,
         },
         {
-          id: "categories" as const,
-          label: "Categories",
-          icon: Folder,
-          badge: categories.length,
-        },
-        {
-          id: "tags" as const,
-          label: "Tags",
+          id: "taxonomy" as const,
+          label: "Categories and Tags",
           icon: Tag,
-          badge: tags.length,
+          badge: categories.length + tags.length,
         },
         {
           id: "media" as const,
           label: "Media Library",
           icon: ImageIcon,
           badge: overview?.stats.media.total,
+        },
+      ],
+    },
+    {
+      label: "User Management",
+      items: [
+        {
+          id: "users" as const,
+          label: "Users",
+          icon: Users,
+          badge: usersSummary?.total ?? overview?.stats.users.total,
+        },
+        {
+          id: "roles" as const,
+          label: "Roles and Permissions",
+          icon: UserCheck,
+          badge: overview?.stats.users.admins,
         },
       ],
     },
@@ -1115,25 +1581,25 @@ export function AdminDashboard() {
           badge: unreadMessagesCount > 0 ? unreadMessagesCount : undefined,
           highlightBadge: unreadMessagesCount > 0,
         },
-      ],
-    },
-    {
-      label: "User Management",
-      items: [
         {
-          id: "users" as const,
-          label: "Users",
-          icon: Users,
-          badge: overview?.stats.users.total,
+          id: "emailCenter" as const,
+          label: "Email Center",
+          icon: Send,
+        },
+        {
+          id: "emailHistory" as const,
+          label: "Email History",
+          icon: History,
+          badge: campaignsMeta.total > 0 ? campaignsMeta.total : undefined,
         },
       ],
     },
     {
       label: "System",
       items: [
-        { id: "analytics" as const, label: "Analytics", icon: BarChart3 },
         { id: "settings" as const, label: "Site Settings", icon: Settings },
         { id: "seo" as const, label: "SEO Settings", icon: Globe },
+        { id: "security" as const, label: "Security", icon: Shield },
         { id: "audit" as const, label: "Audit Logs", icon: ShieldCheck },
       ],
     },
@@ -1142,15 +1608,19 @@ export function AdminDashboard() {
   const sectionTitles: Record<AdminNavSection, { title: string; subtitle: string }> = {
     dashboard: {
       title: "Executive Platform Overview",
-      subtitle: "Real-time publishing metrics, 6-month trends, and recent operational activity",
+      subtitle: "Real-time user, content, communication, and security telemetry",
     },
     blogs: {
-      title: "Blog Administration & Technical Publishing",
+      title: "Blog Management & Technical Publishing",
       subtitle: "Author, schedule, preview, and manage technical articles and SEO metadata",
     },
     projects: {
       title: "Engineering Portfolio Management",
       subtitle: "Manage case studies, architecture descriptions, screenshots, and live deployments",
+    },
+    taxonomy: {
+      title: "Categories and Tags",
+      subtitle: "Organize blog posts and portfolio projects into structured taxonomies and topic tags",
     },
     categories: {
       title: "Content Categories",
@@ -1164,13 +1634,25 @@ export function AdminDashboard() {
       title: "Centralized Media Library",
       subtitle: "Server-validated image uploads and Cloudinary CDN asset management",
     },
-    messages: {
-      title: "Contact Inquiries & Communication",
-      subtitle: "Read, respond to, archive, and manage incoming messages",
-    },
     users: {
-      title: "User & Access Administration",
-      subtitle: "Manage registered accounts, verification status, roles, and active sessions",
+      title: "Advanced User Management",
+      subtitle: "Search, filter, sort, verify, and manage user accounts and roles",
+    },
+    roles: {
+      title: "Roles and Permissions Governance",
+      subtitle: "Least-privilege RBAC administration with confirmation and audit logging",
+    },
+    messages: {
+      title: "Contact Messages & Inbox Management",
+      subtitle: "Read, filter, bulk-update, and manage incoming contact inquiries",
+    },
+    emailCenter: {
+      title: "Admin Email Notification Center",
+      subtitle: "Compose, preview, and dispatch branded Dezaakir emails to individual or all users",
+    },
+    emailHistory: {
+      title: "Email Campaign History & Delivery Telemetry",
+      subtitle: "Inspect sent email campaigns, recipient counts, and delivery outcomes",
     },
     analytics: {
       title: "Platform Analytics & Publishing Trends",
@@ -1184,9 +1666,13 @@ export function AdminDashboard() {
       title: "SEO & OpenGraph Configuration",
       subtitle: "Manage global search metadata, social cards, sitemaps, and per-page SEO readiness",
     },
+    security: {
+      title: "Platform Security & Administrator MFA",
+      subtitle: "Configure TOTP multi-factor authentication and review active security defenses",
+    },
     audit: {
-      title: "Security & Administrative Audit Trail",
-      subtitle: "Immutable record of authentication, content mutations, and access events",
+      title: "Security & Administrative Audit Logs",
+      subtitle: "Immutable record of authentication, role changes, content mutations, and access events",
     },
   };
 
@@ -1461,11 +1947,11 @@ export function AdminDashboard() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => setActiveSection("media")}
+                        onClick={() => setActiveSection("emailCenter")}
                         className="inline-flex items-center gap-1.5 border border-white/25 px-4 py-2 text-xs font-semibold tracking-wider text-white uppercase transition hover:border-white"
                       >
-                        <Upload className="h-3.5 w-3.5" />
-                        Upload Media
+                        <Send className="h-3.5 w-3.5" />
+                        Email Center
                       </button>
                       <button
                         type="button"
@@ -1473,79 +1959,77 @@ export function AdminDashboard() {
                         className="inline-flex items-center gap-1.5 border border-white/25 px-4 py-2 text-xs font-semibold tracking-wider text-white uppercase transition hover:border-white"
                       >
                         <MessageSquare className="h-3.5 w-3.5" />
-                        View Contact Messages ({overview.stats.messages.unread} unread)
+                        Contact Messages ({unreadMessagesCount} unread)
                       </button>
                     </div>
                   </div>
 
-                  {/* 8 Core Statistics Cards */}
+                  {/* 8 Core Executive Overview Cards */}
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     {[
                       {
-                        label: "Total Blog Posts",
-                        value: overview.stats.blogs.total,
-                        comparison: overview.comparisons
-                          ? `${overview.comparisons.blogsCreated.last30Days} created in last 30d (prev 30d: ${overview.comparisons.blogsCreated.prev30Days})`
-                          : "Live MongoDB count",
-                        icon: FileText,
-                        target: "blogs" as AdminNavSection,
+                        label: "Total Users",
+                        value: overview.stats.users.total,
+                        comparison: `${overview.stats.users.active} active · ${overview.stats.users.suspended} suspended`,
+                        icon: Users,
+                        target: "users" as AdminNavSection,
                       },
                       {
-                        label: "Published Posts",
+                        label: "New Registrations",
+                        value:
+                          overview.comparisons?.usersRegistered.last30Days ??
+                          overview.stats.users.newLast30d ??
+                          0,
+                        comparison: overview.comparisons
+                          ? `Last 30 days (prev 30d: ${overview.comparisons.usersRegistered.prev30Days})`
+                          : "Joined in the last 30 days",
+                        icon: UserPlus,
+                        target: "users" as AdminNavSection,
+                      },
+                      {
+                        label: "Verified Users",
+                        value:
+                          overview.stats.users.verified ??
+                          usersSummary?.verified ??
+                          overview.stats.users.active,
+                        comparison: `${overview.stats.users.unverified ?? usersSummary?.unverified ?? 0} pending verification`,
+                        icon: CheckCircle2,
+                        target: "users" as AdminNavSection,
+                      },
+                      {
+                        label: "Admin Accounts",
+                        value: overview.stats.users.admins,
+                        comparison: `${overview.stats.users.editors ?? 0} Editor account(s)`,
+                        icon: UserCheck,
+                        target: "roles" as AdminNavSection,
+                      },
+                      {
+                        label: "Published Blog Posts",
                         value: overview.stats.blogs.published,
-                        comparison: overview.comparisons
-                          ? `${overview.comparisons.blogsPublished.last30Days} published in last 30d`
-                          : "Publicly indexed articles",
+                        comparison: `${overview.stats.blogs.total} total (${overview.stats.blogs.drafts} drafts)`,
                         icon: BookOpen,
-                        target: "blogs" as AdminNavSection,
-                      },
-                      {
-                        label: "Draft Posts",
-                        value: overview.stats.blogs.drafts,
-                        comparison: "Work-in-progress articles",
-                        icon: Edit3,
-                        target: "blogs" as AdminNavSection,
-                      },
-                      {
-                        label: "Scheduled Posts",
-                        value: overview.stats.blogs.scheduled,
-                        comparison: "Queued for future publication",
-                        icon: Calendar,
                         target: "blogs" as AdminNavSection,
                       },
                       {
                         label: "Total Projects",
                         value: overview.stats.projects.total,
-                        comparison: overview.comparisons
-                          ? `${overview.comparisons.projectsCreated.last30Days} added in last 30d (prev 30d: ${overview.comparisons.projectsCreated.prev30Days})`
-                          : "Engineering case studies",
+                        comparison: `${overview.stats.projects.published} published · ${overview.stats.projects.drafts} drafts`,
                         icon: FolderKanban,
                         target: "projects" as AdminNavSection,
                       },
                       {
-                        label: "Published Projects",
-                        value: overview.stats.projects.published,
-                        comparison: `${overview.stats.projects.drafts} draft project(s)`,
-                        icon: Sparkles,
-                        target: "projects" as AdminNavSection,
-                      },
-                      {
-                        label: "Registered Users",
-                        value: overview.stats.users.total,
-                        comparison: overview.comparisons
-                          ? `${overview.comparisons.usersRegistered.last30Days} joined in last 30d (${overview.stats.users.active} active)`
-                          : `${overview.stats.users.active} active accounts`,
-                        icon: Users,
-                        target: "users" as AdminNavSection,
-                      },
-                      {
                         label: "Unread Contact Messages",
-                        value: overview.stats.messages.unread,
-                        comparison: overview.comparisons
-                          ? `${overview.comparisons.messagesReceived.last30Days} inquiries in last 30d (${overview.stats.messages.total} total)`
-                          : `${overview.stats.messages.total} total messages`,
+                        value: unreadMessagesCount,
+                        comparison: `${overview.stats.messages.total} total messages in inbox`,
                         icon: Mail,
                         target: "messages" as AdminNavSection,
+                      },
+                      {
+                        label: "Recent Admin Activity",
+                        value: overview.recentActivity.length,
+                        comparison: "Latest audited administrative & security events",
+                        icon: Activity,
+                        target: "audit" as AdminNavSection,
                       },
                     ].map((stat) => {
                       const Icon = stat.icon;
@@ -2998,22 +3482,16 @@ export function AdminDashboard() {
               )}
 
               {/* ========================================================= */}
-              {/* 4. CATEGORIES MANAGEMENT                                  */}
+              {/* 4. CATEGORIES AND TAGS MANAGEMENT                         */}
               {/* ========================================================= */}
-              {activeSection === "categories" && (
-                <AdminCategoriesView
+              {(activeSection === "taxonomy" ||
+                activeSection === "categories" ||
+                activeSection === "tags") && (
+                <AdminTaxonomyCombinedView
                   categories={categories}
+                  tags={tags}
                   onSaveCategory={handleSaveCategory}
                   onDeleteCategory={confirmDeleteCategory}
-                />
-              )}
-
-              {/* ========================================================= */}
-              {/* 5. TAGS MANAGEMENT                                        */}
-              {/* ========================================================= */}
-              {activeSection === "tags" && (
-                <AdminTagsView
-                  tags={tags}
                   onSaveTag={handleSaveTag}
                   onDeleteTag={confirmDeleteTag}
                 />
@@ -3049,25 +3527,37 @@ export function AdminDashboard() {
               {/* 7. CONTACT MESSAGES                                       */}
               {/* ========================================================= */}
               {activeSection === "messages" && (
-                <AdminMessagesView
+                <AdminAdvancedMessagesView
                   messages={messages}
+                  counts={messagesCounts}
+                  meta={messagesMeta}
                   loading={messagesLoading}
                   statusFilter={messageStatusFilter}
                   setStatusFilter={setMessageStatusFilter}
                   search={messageSearch}
                   setSearch={setMessageSearch}
-                  onSearch={() => void fetchMessages()}
+                  selectedIds={selectedMessageIds}
+                  setSelectedIds={setSelectedMessageIds}
+                  onSearch={() => void fetchMessages(1)}
+                  onPageChange={(next) => {
+                    setMessagePage(next);
+                    void fetchMessages(next);
+                  }}
                   onUpdateStatus={handleUpdateMessageStatus}
                   onDeleteMessage={confirmDeleteMessage}
+                  onBulkAction={handleBulkMessagesAction}
                 />
               )}
 
               {/* ========================================================= */}
-              {/* 8. USER MANAGEMENT                                        */}
+              {/* 8. ADVANCED USER MANAGEMENT                               */}
               {/* ========================================================= */}
               {activeSection === "users" && (
-                <AdminUsersView
+                <AdminAdvancedUsersView
+                  currentAdmin={currentAdmin}
                   users={users}
+                  summary={usersSummary}
+                  meta={usersMeta}
                   loading={usersLoading}
                   search={userSearch}
                   setSearch={setUserSearch}
@@ -3075,14 +3565,94 @@ export function AdminDashboard() {
                   setRoleFilter={setUserRoleFilter}
                   statusFilter={userStatusFilter}
                   setStatusFilter={setUserStatusFilter}
-                  onSearch={() => void fetchUsers()}
-                  onUpdateUser={handleUpdateUser}
+                  verifiedFilter={userVerifiedFilter}
+                  setVerifiedFilter={setUserVerifiedFilter}
+                  sortBy={userSortBy}
+                  sortOrder={userSortOrder}
+                  onToggleSort={handleToggleUserSort}
+                  onSearch={() => void fetchUsers(1)}
+                  onPageChange={(next) => {
+                    setUserPage(next);
+                    void fetchUsers(next);
+                  }}
+                  onUpdateUserStatus={handleUpdateUser}
+                  onChangeUserRole={handleChangeUserRole}
                   onInspectUser={handleInspectUser}
                   onRevokeSessions={handleRevokeUserSessions}
+                  onEmailUser={handleEmailSingleUser}
                   inspectedUser={inspectedUser}
                   inspectedSessions={inspectedSessions}
                   inspectedActivity={inspectedActivity}
                   onCloseInspector={() => setInspectedUser(null)}
+                />
+              )}
+
+              {/* ========================================================= */}
+              {/* 8B. ROLES AND PERMISSIONS                                 */}
+              {/* ========================================================= */}
+              {activeSection === "roles" && (
+                <AdminRolesPermissionsView
+                  currentAdmin={currentAdmin}
+                  users={users}
+                  summary={usersSummary}
+                  onChangeUserRole={handleChangeUserRole}
+                  onNavigateToUsers={(role) => {
+                    setUserRoleFilter(role);
+                    setActiveSection("users");
+                  }}
+                />
+              )}
+
+              {/* ========================================================= */}
+              {/* 8C. EMAIL NOTIFICATION CENTER                             */}
+              {/* ========================================================= */}
+              {activeSection === "emailCenter" && (
+                <AdminEmailCenterView
+                  users={users}
+                  currentAdmin={currentAdmin}
+                  recipientMode={emailRecipientMode}
+                  setRecipientMode={setEmailRecipientMode}
+                  selectedRecipientIds={selectedRecipientIds}
+                  setSelectedRecipientIds={setSelectedRecipientIds}
+                  subject={emailSubject}
+                  setSubject={setEmailSubject}
+                  bodyHtml={emailBodyHtml}
+                  setBodyHtml={setEmailBodyHtml}
+                  testEmail={emailTestAddress}
+                  setTestEmail={setEmailTestAddress}
+                  respectConsent={emailRespectConsent}
+                  setRespectConsent={setEmailRespectConsent}
+                  previewHtml={emailPreviewHtml}
+                  previewLoading={emailPreviewLoading}
+                  sending={emailSending}
+                  lastCampaignResult={lastCampaignResult}
+                  onGeneratePreview={() => void handlePreviewAdminEmail()}
+                  onSendTestEmail={() => void handleSendTestEmail()}
+                  onDispatchCampaign={handleDispatchCampaign}
+                  onViewHistory={() => setActiveSection("emailHistory")}
+                />
+              )}
+
+              {/* ========================================================= */}
+              {/* 8D. EMAIL CAMPAIGN HISTORY                                */}
+              {/* ========================================================= */}
+              {activeSection === "emailHistory" && (
+                <AdminEmailHistoryView
+                  campaigns={campaigns}
+                  meta={campaignsMeta}
+                  loading={campaignsLoading}
+                  search={campaignSearch}
+                  setSearch={setCampaignSearch}
+                  statusFilter={campaignStatusFilter}
+                  setStatusFilter={setCampaignStatusFilter}
+                  onSearch={() => void fetchEmailCampaigns(1)}
+                  onPageChange={(next) => {
+                    setCampaignPage(next);
+                    void fetchEmailCampaigns(next);
+                  }}
+                  onInspectCampaign={(id) => void handleInspectCampaign(id)}
+                  inspectedCampaign={inspectedCampaign}
+                  onCloseInspector={() => setInspectedCampaign(null)}
                 />
               )}
 
@@ -3121,6 +3691,23 @@ export function AdminDashboard() {
                   onOpenMediaPicker={(target) => setMediaPickerTarget(target)}
                   onEditBlog={openEditBlog}
                   onEditProject={openEditProject}
+                />
+              )}
+
+              {/* ========================================================= */}
+              {/* 11B. SYSTEM SECURITY & ADMIN MFA                          */}
+              {/* ========================================================= */}
+              {activeSection === "security" && (
+                <AdminSecurityCenterView
+                  currentAdmin={currentAdmin}
+                  securityLogs={auditLogs}
+                  onSetupMfa={() => void handleSetupMfa()}
+                  onEnableMfa={(code) => void handleEnableMfa(code)}
+                  mfaSecret={mfaSecret}
+                  mfaOtpauthUri={mfaOtpauthUri}
+                  mfaRecoveryCodes={mfaRecoveryCodes}
+                  mfaBusy={mfaBusy}
+                  onOpenFullAuditLogs={() => setActiveSection("audit")}
                 />
               )}
 

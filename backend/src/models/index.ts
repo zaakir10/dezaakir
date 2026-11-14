@@ -16,6 +16,16 @@ export { ContactMessage, MESSAGE_STATUSES, type IContactMessage, type MessageSta
 export { Media, MEDIA_FORMATS, type IMedia } from "./Media.js";
 export { AuditLog, AUDIT_CATEGORIES, AUDIT_OUTCOMES, type IAuditLog, type AuditCategory, type AuditOutcome } from "./AuditLog.js";
 export { SiteSettings, SETTINGS_KEY, type ISiteSettings } from "./SiteSettings.js";
+export {
+  EmailCampaign,
+  CAMPAIGN_STATUSES,
+  RECIPIENT_MODES,
+  RECIPIENT_DELIVERY_STATUSES,
+  type IEmailCampaign,
+  type ICampaignRecipient,
+  type CampaignStatus,
+  type RecipientMode,
+} from "./EmailCampaign.js";
 
 import { User } from "./User.js";
 import { Session } from "./Session.js";
@@ -29,6 +39,7 @@ import { ContactMessage } from "./ContactMessage.js";
 import { Media } from "./Media.js";
 import { AuditLog } from "./AuditLog.js";
 import { SiteSettings } from "./SiteSettings.js";
+import { EmailCampaign } from "./EmailCampaign.js";
 
 export const allModels = [
   User,
@@ -43,4 +54,5 @@ export const allModels = [
   Media,
   AuditLog,
   SiteSettings,
+  EmailCampaign,
 ] as const;

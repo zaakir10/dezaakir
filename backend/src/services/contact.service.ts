@@ -6,6 +6,7 @@ import { hashToken } from "../utils/crypto.js";
 import { escapeRegex, normalizePage, toObjectId, trusted } from "../utils/query.js";
 import { sanitizePlainText } from "../utils/sanitizeHtml.js";
 import type {
+  BulkMessagesActionInput,
   ContactSubmissionInput,
   ListMessagesQuery,
   UpdateMessageStatusInput,
@@ -61,7 +62,11 @@ export async function submitContactMessage(
 
 export async function listContactMessages(
   query: ListMessagesQuery,
-): Promise<{ messages: Record<string, unknown>[]; meta: PaginationMeta }> {
+): Promise<{
+  messages: Record<string, unknown>[];
+  counts: { total: number; unread: number; read: number; archived: number };
+  meta: PaginationMeta;
+}> {
   const { page, limit } = normalizePage(query.page, query.limit, 50);
   const filter: Record<string, unknown> = {};
   if (query.status) {
@@ -73,20 +78,31 @@ export async function listContactMessages(
       { name: trusted({ $regex: safePattern }) },
       { email: trusted({ $regex: safePattern }) },
       { subject: trusted({ $regex: safePattern }) },
+      { message: trusted({ $regex: safePattern }) },
     ]);
   }
 
-  const [total, docs] = await Promise.all([
+  const [total, docs, allTotal, unreadCount, readCount, archivedCount] = await Promise.all([
     ContactMessage.countDocuments(filter),
     ContactMessage.find(filter)
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit),
+    ContactMessage.countDocuments({}),
+    ContactMessage.countDocuments({ status: "NEW" }),
+    ContactMessage.countDocuments({ status: "READ" }),
+    ContactMessage.countDocuments({ status: "ARCHIVED" }),
   ]);
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
   return {
     messages: docs.map((d) => d.toJSON() as unknown as Record<string, unknown>),
+    counts: {
+      total: allTotal,
+      unread: unreadCount,
+      read: readCount,
+      archived: archivedCount,
+    },
     meta: { page, limit, total, totalPages },
   };
 }
@@ -143,4 +159,63 @@ export async function deleteContactMessage(
   });
 
   return { deleted: true, id };
+}
+
+export async function bulkContactMessagesAction(
+  input: BulkMessagesActionInput,
+  req?: Request,
+): Promise<{ action: string; affectedCount: number }> {
+  let affectedCount = 0;
+
+  if (input.action === "MARK_READ" && input.ids) {
+    const objIds = input.ids.map((id) => toObjectId(id));
+    const res = await ContactMessage.updateMany(
+      { _id: trusted({ $in: objIds }) },
+      { $set: { status: "READ" } },
+    );
+    affectedCount = res.modifiedCount;
+  } else if (input.action === "MARK_UNREAD" && input.ids) {
+    const objIds = input.ids.map((id) => toObjectId(id));
+    const res = await ContactMessage.updateMany(
+      { _id: trusted({ $in: objIds }) },
+      { $set: { status: "NEW" } },
+    );
+    affectedCount = res.modifiedCount;
+  } else if (input.action === "MARK_ALL_READ") {
+    const res = await ContactMessage.updateMany(
+      { status: "NEW" },
+      { $set: { status: "READ" } },
+    );
+    affectedCount = res.modifiedCount;
+  } else if (input.action === "DELETE_SELECTED" && input.ids) {
+    const objIds = input.ids.map((id) => toObjectId(id));
+    const res = await ContactMessage.deleteMany({ _id: trusted({ $in: objIds }) });
+    affectedCount = res.deletedCount ?? 0;
+  } else if (input.action === "DELETE_ALL") {
+    if (input.confirm !== true) {
+      throw AppError.badRequest("Explicit confirmation is required before deleting all messages");
+    }
+    const res = await ContactMessage.deleteMany({});
+    affectedCount = res.deletedCount ?? 0;
+  }
+
+  await recordAudit({
+    category: "ADMIN",
+    action: `admin.messages_bulk_${input.action.toLowerCase()}`,
+    outcome: "SUCCESS",
+    actor: req?.user?._id,
+    actorEmail: req?.user?.email,
+    targetType: "ContactMessage",
+    req,
+    metadata: {
+      bulkAction: input.action,
+      affectedCount,
+      requestedCount: input.ids?.length ?? "ALL",
+    },
+  });
+
+  return {
+    action: input.action,
+    affectedCount,
+  };
 }

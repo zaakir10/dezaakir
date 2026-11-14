@@ -90,7 +90,30 @@ export const ChangePasswordSchema = z
   });
 
 export const UpdateProfileSchema = z.strictObject({
-  name: z.string().trim().min(2, "Full name must be at least 2 characters").max(80, "Full name is too long"),
+  name: z.string().trim().min(2, "Full name must be at least 2 characters").max(80, "Full name is too long").optional(),
+  bio: z.string().trim().max(500, "Bio must be at most 500 characters").optional(),
+  location: z.string().trim().max(100, "Location must be at most 100 characters").optional(),
+  preferences: z
+    .strictObject({
+      securityAlerts: z.boolean().optional(),
+      emailNotifications: z.boolean().optional(),
+    })
+    .optional(),
+});
+
+export const UploadAvatarSchema = z.strictObject({
+  fileBase64: z.string().trim().min(20, "Image payload is required").max(7_500_000, "Image payload is too large"),
+  mimeType: z.enum(["image/png", "image/jpeg", "image/webp", "image/gif"]).optional(),
+  alt: z.string().trim().max(160).optional(),
+});
+
+export const RequestEmailChangeSchema = z.strictObject({
+  newEmail: emailSchema,
+  currentPassword: z.string().min(1, "Current password is required").max(128),
+});
+
+export const VerifyEmailChangeSchema = z.strictObject({
+  code: otpCodeSchema,
 });
 
 export const SessionIdParamSchema = z.strictObject({
@@ -109,3 +132,6 @@ export type ForgotPasswordInput = z.infer<typeof ForgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof ResetPasswordSchema>;
 export type ChangePasswordInput = z.infer<typeof ChangePasswordSchema>;
 export type UpdateProfileInput = z.infer<typeof UpdateProfileSchema>;
+export type UploadAvatarInput = z.infer<typeof UploadAvatarSchema>;
+export type RequestEmailChangeInput = z.infer<typeof RequestEmailChangeSchema>;
+export type VerifyEmailChangeInput = z.infer<typeof VerifyEmailChangeSchema>;

@@ -298,4 +298,167 @@ describe("Phase 8: Admin Overview, User Management & Audit Logs", () => {
     expect(ov.body.data.monthlySeries).toHaveLength(6);
     expect(ov.body.data.systemStatus).toBeDefined();
   });
+
+  it("supports role management, bulk contact actions, email preview/dispatch/history, and clean profile & login activity", async () => {
+    const admin = await loginAdmin();
+    const member = await registerAndLoginMember("upgrade-member@example.com");
+
+    // 1. Non-admin cannot change roles
+    const nonAdminRoleAttempt = await request(app)
+      .patch(`/api/admin/users/${member.userId}/role`)
+      .set("Cookie", member.cookie)
+      .set("X-CSRF-Token", member.csrfToken)
+      .send({ role: "ADMIN" });
+    expect(nonAdminRoleAttempt.status).toBe(403);
+
+    // 2. Admin cannot change own role
+    const selfRoleAttempt = await request(app)
+      .patch(`/api/admin/users/${admin.adminId}/role`)
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({ role: "USER" });
+    expect(selfRoleAttempt.status).toBe(400);
+    expect(selfRoleAttempt.body.error.code).toBe("SELF_ROLE_CHANGE_FORBIDDEN");
+
+    // 3. Admin promotes member to EDITOR and back to USER with audit log
+    const promoteRes = await request(app)
+      .patch(`/api/admin/users/${member.userId}/role`)
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({ role: "EDITOR" });
+    expect(promoteRes.status).toBe(200);
+    expect(promoteRes.body.data.user.role).toBe("EDITOR");
+
+    const demoteRes = await request(app)
+      .patch(`/api/admin/users/${member.userId}/role`)
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({ role: "USER" });
+    expect(demoteRes.status).toBe(200);
+    expect(demoteRes.body.data.user.role).toBe("USER");
+
+    // 4. Bulk contact message actions (MARK_READ, MARK_UNREAD, DELETE_SELECTED, DELETE_ALL)
+    await request(app).post("/api/contact").send({
+      name: "Alice Sender",
+      email: "alice@example.com",
+      subject: "First Inquiry",
+      message: "Hello from Alice about platform security.",
+    });
+    await request(app).post("/api/contact").send({
+      name: "Bob Sender",
+      email: "bob@example.com",
+      subject: "Second Inquiry",
+      message: "Hello from Bob about engineering.",
+    });
+
+    const msgList = await request(app)
+      .get("/api/admin/messages")
+      .set("Cookie", admin.cookie);
+    expect(msgList.status).toBe(200);
+    const ids = (msgList.body.data.messages as Array<{ id: string }>).map((m) => m.id);
+    expect(ids).toHaveLength(2);
+
+    const markReadRes = await request(app)
+      .post("/api/admin/messages/bulk")
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({ action: "MARK_READ", ids: [ids[0]] });
+    expect(markReadRes.status).toBe(200);
+    expect(markReadRes.body.data.affectedCount).toBe(1);
+
+    const markUnreadRes = await request(app)
+      .post("/api/admin/messages/bulk")
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({ action: "MARK_UNREAD", ids: [ids[0]] });
+    expect(markUnreadRes.status).toBe(200);
+    expect(markUnreadRes.body.data.affectedCount).toBe(1);
+
+    const deleteSelectedRes = await request(app)
+      .post("/api/admin/messages/bulk")
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({ action: "DELETE_SELECTED", ids: [ids[0]] });
+    expect(deleteSelectedRes.status).toBe(200);
+    expect(deleteSelectedRes.body.data.affectedCount).toBe(1);
+
+    const deleteAllRes = await request(app)
+      .post("/api/admin/messages/bulk")
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({ action: "DELETE_ALL", confirm: true });
+    expect(deleteAllRes.status).toBe(200);
+    expect(deleteAllRes.body.data.affectedCount).toBe(1);
+
+    const afterDeleteAll = await request(app)
+      .get("/api/admin/messages")
+      .set("Cookie", admin.cookie);
+    expect(afterDeleteAll.status).toBe(200);
+    expect(afterDeleteAll.body.data.counts.total).toBe(0);
+
+    // 5. Email preview, dispatch & history
+    const previewRes = await request(app)
+      .post("/api/admin/emails/preview")
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({
+        subject: "Dezaakir Platform Update",
+        bodyHtml: "<p>Important security update for our members.</p>",
+      });
+    expect(previewRes.status).toBe(200);
+    expect(previewRes.body.data.html).toContain("#0B1628");
+    expect(previewRes.body.data.html).toContain("Important security update");
+
+    const sendRes = await request(app)
+      .post("/api/admin/emails/send")
+      .set("Cookie", admin.cookie)
+      .set("X-CSRF-Token", admin.csrfToken)
+      .send({
+        recipientMode: "SINGLE",
+        recipientIds: [member.userId],
+        subject: "Individual Security Notice",
+        bodyHtml: "<p>Hello member, your account preferences are active.</p>",
+      });
+    expect(sendRes.status).toBe(201);
+    expect(sendRes.body.data.campaign.sentCount).toBe(1);
+    expect(sendRes.body.data.campaign.failedCount).toBe(0);
+
+    const historyRes = await request(app)
+      .get("/api/admin/emails/history")
+      .set("Cookie", admin.cookie);
+    expect(historyRes.status).toBe(200);
+    expect(historyRes.body.data.campaigns).toHaveLength(1);
+    expect(historyRes.body.data.campaigns[0].subject).toBe("Individual Security Notice");
+
+    // 6. Profile update & clean login activity (no raw User-Agent strings)
+    const profileUpdateRes = await request(app)
+      .patch("/api/auth/me")
+      .set("Cookie", member.cookie)
+      .set("X-CSRF-Token", member.csrfToken)
+      .send({
+        name: "Updated Member Name",
+        bio: "Systems Engineer",
+        location: "Riyadh",
+        preferences: {
+          securityAlerts: true,
+          emailNotifications: false,
+        },
+      });
+    expect(profileUpdateRes.status).toBe(200);
+    expect(profileUpdateRes.body.data.user.name).toBe("Updated Member Name");
+    expect(profileUpdateRes.body.data.user.bio).toBe("Systems Engineer");
+    expect(profileUpdateRes.body.data.user.preferences.emailNotifications).toBe(false);
+
+    const activityRes = await request(app)
+      .get("/api/auth/login-activity")
+      .set("Cookie", member.cookie)
+      .set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0");
+    expect(activityRes.status).toBe(200);
+    expect(Array.isArray(activityRes.body.data.activity)).toBe(true);
+    expect(activityRes.body.data.activity.length).toBeGreaterThanOrEqual(1);
+    const firstActivity = activityRes.body.data.activity[0] as Record<string, unknown>;
+    expect(firstActivity.deviceName).toBeDefined();
+    expect(firstActivity.userAgent).toBeUndefined();
+    expect(String(firstActivity.deviceName)).not.toContain("Mozilla/5.0");
+  });
 });

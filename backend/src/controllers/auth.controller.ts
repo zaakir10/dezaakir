@@ -3,17 +3,22 @@ import { deriveCsrfToken } from "../middleware/auth.js";
 import {
   changePassword,
   enableMfa,
+  getRecentLoginActivity,
   initiateMfaSetup,
   listUserSessions,
   loginUser,
   logoutAllSessions,
   logoutSession,
   registerUser,
+  removeUserAvatar,
+  requestEmailChange,
   requestPasswordReset,
   resendVerificationOtp,
   resetPassword,
   revokeUserSession,
   updateUserProfile,
+  uploadUserAvatar,
+  verifyEmailChange,
   verifyEmailOtp,
 } from "../services/auth.service.js";
 import { sendSuccess } from "../utils/apiResponse.js";
@@ -23,9 +28,12 @@ import type {
   ForgotPasswordInput,
   LoginInput,
   RegisterInput,
+  RequestEmailChangeInput,
   ResendVerificationInput,
   ResetPasswordInput,
   UpdateProfileInput,
+  UploadAvatarInput,
+  VerifyEmailChangeInput,
   VerifyEmailInput,
 } from "../validators/auth.validator.js";
 
@@ -90,10 +98,19 @@ export const meHandler: RequestHandler = (req, res) => {
     id: String(req.user!._id),
     name: req.user!.name,
     email: req.user!.email,
+    pendingEmail: req.user!.pendingEmail,
+    avatar: req.user!.avatar,
+    bio: req.user!.bio ?? "",
+    location: req.user!.location ?? "",
     role: req.user!.role,
     emailVerified: req.user!.emailVerified,
     status: req.user!.status,
     lastLoginAt: req.user!.lastLoginAt,
+    passwordChangedAt: req.user!.passwordChangedAt,
+    preferences: {
+      securityAlerts: req.user!.preferences?.securityAlerts ?? true,
+      emailNotifications: req.user!.preferences?.emailNotifications ?? true,
+    },
     mfa: {
       enabled: Boolean(req.user!.mfa?.enabled),
       enabledAt: req.user!.mfa?.enabledAt,
@@ -115,6 +132,32 @@ export const meHandler: RequestHandler = (req, res) => {
 export const updateProfileHandler: RequestHandler = async (req, res) => {
   const updated = await updateUserProfile(String(req.user!._id), req.body as UpdateProfileInput, req);
   sendSuccess(res, { user: updated });
+};
+
+export const uploadAvatarHandler: RequestHandler = async (req, res) => {
+  const updated = await uploadUserAvatar(String(req.user!._id), req.body as UploadAvatarInput, req);
+  sendSuccess(res, { user: updated });
+};
+
+export const removeAvatarHandler: RequestHandler = async (req, res) => {
+  const updated = await removeUserAvatar(String(req.user!._id), req);
+  sendSuccess(res, { user: updated });
+};
+
+export const requestEmailChangeHandler: RequestHandler = async (req, res) => {
+  const result = await requestEmailChange(String(req.user!._id), req.body as RequestEmailChangeInput, req);
+  sendSuccess(res, result);
+};
+
+export const verifyEmailChangeHandler: RequestHandler = async (req, res) => {
+  const result = await verifyEmailChange(String(req.user!._id), req.body as VerifyEmailChangeInput, req);
+  sendSuccess(res, result);
+};
+
+export const loginActivityHandler: RequestHandler = async (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  const activity = await getRecentLoginActivity(String(req.user!._id), String(req.session!._id));
+  sendSuccess(res, { activity });
 };
 
 export const changePasswordHandler: RequestHandler = async (req, res) => {

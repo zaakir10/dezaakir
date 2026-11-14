@@ -1,4 +1,4 @@
-export type Role = "USER" | "ADMIN";
+export type Role = "USER" | "EDITOR" | "ADMIN" | "SUPER_ADMIN";
 export type UserStatus = "PENDING" | "ACTIVE" | "SUSPENDED";
 
 export interface ImageRef {
@@ -10,14 +10,31 @@ export interface ImageRef {
   height?: number;
 }
 
+export interface UserAvatar {
+  url: string;
+  publicId: string;
+  alt?: string;
+}
+
+export interface UserPreferences {
+  securityAlerts: boolean;
+  emailNotifications: boolean;
+}
+
 export interface User {
   id: string;
   name: string;
   email: string;
+  pendingEmail?: string;
+  avatar?: UserAvatar;
+  bio?: string;
+  location?: string;
   role: Role;
   emailVerified: boolean;
   status: UserStatus;
   lastLoginAt?: string;
+  passwordChangedAt?: string;
+  preferences?: UserPreferences;
   mfa?: {
     enabled: boolean;
     enabledAt?: string;
@@ -26,11 +43,19 @@ export interface User {
   updatedAt: string;
 }
 
+export interface LoginActivityItem {
+  id: string;
+  timestamp: string;
+  deviceName: string;
+  current: boolean;
+}
+
 export interface SessionInfo {
   id: string;
   mfaVerified: boolean;
   ip?: string;
   userAgent?: string;
+  deviceName?: string;
   lastSeenAt?: string;
   expiresAt: string;
   current?: boolean;
@@ -212,8 +237,12 @@ export interface OverviewStats {
   users: {
     total: number;
     active: number;
+    verified?: number;
+    unverified?: number;
     suspended: number;
     admins: number;
+    editors?: number;
+    newLast30d?: number;
   };
   messages: {
     total: number;
@@ -222,10 +251,46 @@ export interface OverviewStats {
   media: {
     total: number;
   };
+  emails?: {
+    totalCampaigns: number;
+  };
   taxonomy?: {
     categories: number;
     tags: number;
   };
+}
+
+export type RecipientMode = "SINGLE" | "SELECTED" | "ALL" | "TEST";
+export type CampaignStatus = "QUEUED" | "PROCESSING" | "COMPLETED" | "PARTIAL" | "FAILED";
+
+export interface CampaignRecipientItem {
+  userId?: string;
+  email: string;
+  name?: string;
+  status: "PENDING" | "SENT" | "FAILED";
+  error?: string;
+  sentAt?: string;
+}
+
+export interface EmailCampaignItem {
+  id: string;
+  subject: string;
+  bodyHtml?: string;
+  bodyText?: string;
+  recipientMode: RecipientMode;
+  recipientCount: number;
+  sentCount: number;
+  failedCount: number;
+  pendingCount: number;
+  status: CampaignStatus;
+  sender?: { id?: string; name: string; email: string; role?: Role } | string;
+  senderEmail: string;
+  senderName: string;
+  respectMarketingConsent?: boolean;
+  recipients?: CampaignRecipientItem[];
+  completedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface PeriodComparison {

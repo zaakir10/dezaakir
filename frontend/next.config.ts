@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
 
-const apiOrigin = new URL(process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000").origin;
 const isDev = process.env.NODE_ENV !== "production";
+const apiOrigin = new URL(
+  process.env.NEXT_PUBLIC_API_URL ?? (isDev ? "http://localhost:4000" : "https://v2.dezaakir.com"),
+).origin;
 
 /**
  * Content-Security-Policy for the web app.

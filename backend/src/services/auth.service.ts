@@ -1,5 +1,7 @@
 import type { Request } from "express";
+import { env, isTest } from "../config/env.js";
 import {
+  AuditLog,
   EmailVerification,
   OTP_MAX_ATTEMPTS,
   OTP_RESEND_COOLDOWN_MS,
@@ -8,6 +10,7 @@ import {
   RESET_TOKEN_TTL_MS,
   Session,
   User,
+  type IAuditLog,
   type ISession,
   type IUser,
 } from "../models/index.js";
@@ -31,24 +34,84 @@ import {
   verifyPassword,
   verifyTotpCode,
 } from "../utils/crypto.js";
+import { verifyUploadedImage } from "../utils/fileValidation.js";
 import { toObjectId, trusted } from "../utils/query.js";
+import { sanitizePlainText } from "../utils/sanitizeHtml.js";
 import type {
   ChangePasswordInput,
   ForgotPasswordInput,
   LoginInput,
   RegisterInput,
+  RequestEmailChangeInput,
   ResendVerificationInput,
   ResetPasswordInput,
   UpdateProfileInput,
+  UploadAvatarInput,
+  VerifyEmailChangeInput,
   VerifyEmailInput,
 } from "../validators/auth.validator.js";
 import { recordAudit } from "./audit.service.js";
-import { sendPasswordResetEmail, sendVerificationOtpEmail } from "./email.service.js";
+import {
+  sendPasswordResetEmail,
+  sendSecurityNotificationEmail,
+  sendVerificationOtpEmail,
+  sendWelcomeEmail,
+} from "./email.service.js";
+import { createSignedCloudinaryParams } from "./media.service.js";
 
 const MAX_FAILED_LOGINS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 
-async function issueEmailOtp(userId: string, email: string, name: string): Promise<void> {
+/**
+ * Converts a raw HTTP User-Agent string into a clean, human-readable device name.
+ * Never returns raw Mozilla/5.0 or technical browser build strings.
+ */
+export function parseDeviceName(userAgent?: string): string {
+  if (!userAgent || typeof userAgent !== "string") {
+    return "Web Browser";
+  }
+
+  let browser = "Web Browser";
+  if (/Edg\//i.test(userAgent)) {
+    browser = "Microsoft Edge";
+  } else if (/OPR\/|Opera/i.test(userAgent)) {
+    browser = "Opera";
+  } else if (/Brave/i.test(userAgent)) {
+    browser = "Brave Browser";
+  } else if (/Chrome\//i.test(userAgent) && !/Chromium/i.test(userAgent)) {
+    browser = "Google Chrome";
+  } else if (/Firefox\//i.test(userAgent)) {
+    browser = "Mozilla Firefox";
+  } else if (/Safari\//i.test(userAgent) && !/Chrome\//i.test(userAgent)) {
+    browser = "Apple Safari";
+  }
+
+  let os = "";
+  if (/iPhone/i.test(userAgent)) {
+    os = "iPhone";
+  } else if (/iPad/i.test(userAgent)) {
+    os = "iPad";
+  } else if (/Android/i.test(userAgent)) {
+    os = "Android";
+  } else if (/Windows NT/i.test(userAgent)) {
+    os = "Windows";
+  } else if (/Mac OS X|Macintosh/i.test(userAgent)) {
+    os = "macOS";
+  } else if (/CrOS/i.test(userAgent)) {
+    os = "ChromeOS";
+  } else if (/Linux/i.test(userAgent)) {
+    os = "Linux";
+  }
+
+  return os ? `${browser} on ${os}` : browser;
+}
+
+async function issueEmailOtp(
+  userId: string,
+  email: string,
+  name: string,
+  purpose: "register" | "email-change" = "register",
+): Promise<void> {
   const code = generateOtpCode();
   const codeHash = hashOtp(userId, code);
   const now = new Date();
@@ -67,7 +130,7 @@ async function issueEmailOtp(userId: string, email: string, name: string): Promi
     { upsert: true, returnDocument: "after" },
   );
 
-  await sendVerificationOtpEmail(email, name, code);
+  await sendVerificationOtpEmail(email, name, code, purpose);
 }
 
 export async function registerUser(input: RegisterInput, req?: Request): Promise<{ message: string }> {
@@ -215,6 +278,8 @@ export async function verifyEmailOtp(input: VerifyEmailInput, req?: Request): Pr
     user.status = "ACTIVE";
   }
   await user.save();
+
+  void sendWelcomeEmail(user.email, user.name).catch(() => undefined);
 
   await recordAudit({
     category: "AUTH",
@@ -632,6 +697,15 @@ export async function changePassword(
     req,
   });
 
+  if (user.preferences?.securityAlerts !== false) {
+    void sendSecurityNotificationEmail(
+      user.email,
+      user.name,
+      "Password Changed",
+      "Your account password was changed from your Account Security settings.",
+    ).catch(() => undefined);
+  }
+
   return { message: "Password updated successfully." };
 }
 
@@ -640,16 +714,133 @@ export async function updateUserProfile(
   input: UpdateProfileInput,
   req?: Request,
 ): Promise<Record<string, unknown>> {
-  const user = await User.findByIdAndUpdate(
-    toObjectId(userId),
-    { $set: { name: input.name } },
-    { returnDocument: "after", runValidators: true },
-  );
-  if (!user) throw AppError.notFound("User not found");
+  const existing = await User.findById(toObjectId(userId));
+  if (!existing) throw AppError.notFound("User not found");
+
+  if (input.name !== undefined) {
+    existing.name = sanitizePlainText(input.name);
+  }
+  if (input.bio !== undefined) {
+    existing.bio = sanitizePlainText(input.bio);
+  }
+  if (input.location !== undefined) {
+    existing.location = sanitizePlainText(input.location);
+  }
+  if (input.preferences !== undefined) {
+    const currentPrefs = existing.preferences ?? { securityAlerts: true, emailNotifications: true };
+    existing.preferences = {
+      securityAlerts: input.preferences.securityAlerts ?? currentPrefs.securityAlerts,
+      emailNotifications: input.preferences.emailNotifications ?? currentPrefs.emailNotifications,
+    };
+  }
+
+  await existing.save();
 
   await recordAudit({
     category: "AUTH",
     action: "auth.update_profile",
+    outcome: "SUCCESS",
+    actor: existing._id,
+    actorEmail: existing.email,
+    req,
+  });
+
+  return existing.toJSON() as unknown as Record<string, unknown>;
+}
+
+export async function uploadUserAvatar(
+  userId: string,
+  input: UploadAvatarInput,
+  req?: Request,
+): Promise<Record<string, unknown>> {
+  const user = await User.findById(toObjectId(userId));
+  if (!user) throw AppError.notFound("User not found");
+
+  let rawBase64 = input.fileBase64.trim();
+  let declaredMime = input.mimeType;
+
+  const dataUriMatch = /^data:([^;]+);base64,([\s\S]+)$/i.exec(rawBase64);
+  if (dataUriMatch) {
+    declaredMime = (declaredMime ?? dataUriMatch[1]) as UploadAvatarInput["mimeType"];
+    rawBase64 = dataUriMatch[2]!;
+  }
+
+  const buffer = Buffer.from(rawBase64, "base64");
+  const verified = verifyUploadedImage(buffer, declaredMime);
+  const folder = "dezaakir/profile";
+  const signed = createSignedCloudinaryParams(folder);
+  const fullPublicId = `${folder}/${signed.publicId}`;
+
+  let avatarUrl: string | undefined;
+
+  if (env.CLOUDINARY_CLOUD_NAME && env.CLOUDINARY_API_KEY && env.CLOUDINARY_API_SECRET && !isTest) {
+    try {
+      const form = new FormData();
+      form.append("file", `data:${verified.mimeType};base64,${buffer.toString("base64")}`);
+      form.append("api_key", signed.apiKey);
+      form.append("timestamp", String(signed.timestamp));
+      form.append("folder", signed.folder);
+      form.append("public_id", signed.publicId);
+      form.append("signature", signed.signature);
+
+      const uploadRes = await fetch(
+        `https://api.cloudinary.com/v1_1/${encodeURIComponent(signed.cloudName)}/image/upload`,
+        { method: "POST", body: form },
+      );
+
+      if (uploadRes.ok) {
+        const cloudData = (await uploadRes.json()) as { secure_url?: string };
+        if (cloudData.secure_url) {
+          avatarUrl = cloudData.secure_url;
+        }
+      }
+    } catch {
+      // Fallback to inline verified data URI below if Cloudinary network is unreachable
+    }
+  }
+
+  if (!avatarUrl) {
+    if (isTest) {
+      const cloud = signed.cloudName || "dezaakir-test";
+      avatarUrl = `https://res.cloudinary.com/${cloud}/image/upload/${fullPublicId}.${verified.format}`;
+    } else {
+      if (buffer.length > 2_500_000) {
+        throw AppError.badRequest("Profile avatar image must be 2.5 MB or smaller");
+      }
+      avatarUrl = `data:${verified.mimeType};base64,${buffer.toString("base64")}`;
+    }
+  }
+
+  user.avatar = {
+    url: avatarUrl,
+    publicId: fullPublicId,
+    alt: input.alt ? sanitizePlainText(input.alt) : `${user.name} profile picture`,
+  };
+  await user.save();
+
+  await recordAudit({
+    category: "AUTH",
+    action: "auth.update_avatar",
+    outcome: "SUCCESS",
+    actor: user._id,
+    actorEmail: user.email,
+    req,
+    metadata: { format: verified.format, bytes: verified.bytes },
+  });
+
+  return user.toJSON() as unknown as Record<string, unknown>;
+}
+
+export async function removeUserAvatar(userId: string, req?: Request): Promise<Record<string, unknown>> {
+  const user = await User.findById(toObjectId(userId));
+  if (!user) throw AppError.notFound("User not found");
+
+  user.avatar = undefined;
+  await user.save();
+
+  await recordAudit({
+    category: "AUTH",
+    action: "auth.remove_avatar",
     outcome: "SUCCESS",
     actor: user._id,
     actorEmail: user.email,
@@ -657,6 +848,175 @@ export async function updateUserProfile(
   });
 
   return user.toJSON() as unknown as Record<string, unknown>;
+}
+
+export async function requestEmailChange(
+  userId: string,
+  input: RequestEmailChangeInput,
+  req?: Request,
+): Promise<{ message: string; pendingEmail: string }> {
+  const user = await User.findById(toObjectId(userId)).select("+passwordHash");
+  if (!user) throw AppError.unauthorized();
+
+  const passwordValid = await verifyPassword(input.currentPassword, user.passwordHash);
+  if (!passwordValid) {
+    await recordAudit({
+      category: "SECURITY",
+      action: "auth.email_change_request_bad_password",
+      outcome: "FAILURE",
+      actor: user._id,
+      actorEmail: user.email,
+      req,
+    });
+    throw new AppError(400, "INVALID_PASSWORD", "Current password is incorrect");
+  }
+
+  const normalizedNewEmail = input.newEmail.trim().toLowerCase();
+  if (normalizedNewEmail === user.email) {
+    throw AppError.badRequest("New email address must be different from your current email address");
+  }
+
+  const emailTaken = await User.exists({
+    email: normalizedNewEmail,
+    _id: trusted({ $ne: user._id }),
+  });
+  if (emailTaken) {
+    throw AppError.conflict("That email address is already associated with another account");
+  }
+
+  user.pendingEmail = normalizedNewEmail;
+  await user.save();
+
+  await issueEmailOtp(String(user._id), normalizedNewEmail, user.name, "email-change");
+
+  await recordAudit({
+    category: "AUTH",
+    action: "auth.email_change_requested",
+    outcome: "SUCCESS",
+    actor: user._id,
+    actorEmail: user.email,
+    req,
+    metadata: { pendingEmail: normalizedNewEmail },
+  });
+
+  return {
+    message: `A 6-digit verification code has been sent to ${normalizedNewEmail}.`,
+    pendingEmail: normalizedNewEmail,
+  };
+}
+
+export async function verifyEmailChange(
+  userId: string,
+  input: VerifyEmailChangeInput,
+  req?: Request,
+): Promise<{ message: string; user: Record<string, unknown> }> {
+  const user = await User.findById(toObjectId(userId));
+  if (!user) throw AppError.unauthorized();
+  if (!user.pendingEmail) {
+    throw AppError.badRequest("No pending email address change was found");
+  }
+
+  const record = await EmailVerification.findOne({ user: user._id }).select("+codeHash");
+  if (!record || record.expiresAt.getTime() <= Date.now()) {
+    if (record) await EmailVerification.deleteOne({ _id: record._id });
+    throw new AppError(400, "OTP_EXPIRED", "Verification code is invalid or has expired");
+  }
+
+  if (record.attempts >= OTP_MAX_ATTEMPTS) {
+    await EmailVerification.deleteOne({ _id: record._id });
+    throw new AppError(429, "OTP_MAX_ATTEMPTS", "Maximum verification attempts exceeded. Please request a new code.");
+  }
+
+  const expectedHash = hashOtp(String(user._id), input.code);
+  if (!safeEqual(expectedHash, record.codeHash)) {
+    await EmailVerification.updateOne({ _id: record._id }, { $inc: { attempts: 1 } });
+    throw new AppError(400, "INVALID_OTP", "Invalid verification code");
+  }
+
+  await EmailVerification.deleteOne({ _id: record._id });
+
+  const oldEmail = user.email;
+  const newEmail = user.pendingEmail;
+
+  const emailTaken = await User.exists({
+    email: newEmail,
+    _id: trusted({ $ne: user._id }),
+  });
+  if (emailTaken) {
+    user.pendingEmail = undefined;
+    await user.save();
+    throw AppError.conflict("That email address is already in use");
+  }
+
+  user.email = newEmail;
+  user.pendingEmail = undefined;
+  user.emailVerified = true;
+  await user.save();
+
+  await recordAudit({
+    category: "AUTH",
+    action: "auth.email_changed",
+    outcome: "SUCCESS",
+    actor: user._id,
+    actorEmail: newEmail,
+    req,
+    metadata: { previousEmail: oldEmail, newEmail },
+  });
+
+  if (user.preferences?.securityAlerts !== false) {
+    void sendSecurityNotificationEmail(
+      oldEmail,
+      user.name,
+      "Email Address Updated",
+      `Your account email address was updated from ${oldEmail} to ${newEmail}.`,
+    ).catch(() => undefined);
+  }
+
+  return {
+    message: "Your email address has been verified and updated.",
+    user: user.toJSON() as unknown as Record<string, unknown>,
+  };
+}
+
+export interface CleanLoginActivityItem {
+  id: string;
+  timestamp: Date;
+  deviceName: string;
+  current: boolean;
+}
+
+/**
+ * Returns recent login activity with ONLY date/time and a clean human-readable device name.
+ * Never exposes raw browser User-Agent strings or raw session tokens.
+ */
+export async function getRecentLoginActivity(
+  userId: string,
+  currentSessionId?: string,
+): Promise<CleanLoginActivityItem[]> {
+  const userObjId = toObjectId(userId);
+  const [recentSessions, recentLoginAudits] = await Promise.all([
+    Session.find({ user: userObjId }).sort({ createdAt: -1 }).limit(8).lean<ISession[]>(),
+    AuditLog.find({ actor: userObjId, action: "auth.login", outcome: "SUCCESS" })
+      .sort({ createdAt: -1 })
+      .limit(8)
+      .lean<IAuditLog[]>(),
+  ]);
+
+  if (recentSessions.length > 0) {
+    return recentSessions.map((s) => ({
+      id: String(s._id),
+      timestamp: s.createdAt,
+      deviceName: parseDeviceName(s.userAgent),
+      current: Boolean(currentSessionId && String(s._id) === String(currentSessionId) && !s.revokedAt),
+    }));
+  }
+
+  return recentLoginAudits.map((log, index) => ({
+    id: String(log._id),
+    timestamp: log.createdAt,
+    deviceName: parseDeviceName(log.userAgent),
+    current: index === 0,
+  }));
 }
 
 // ── TOTP Administrator MFA enrollment & verification ────────────────────────

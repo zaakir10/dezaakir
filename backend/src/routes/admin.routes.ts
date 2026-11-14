@@ -5,6 +5,11 @@ import {
   listUsersQuerySchema,
   userIdParamSchema,
   updateUserStatusSchema,
+  updateUserRoleSchema,
+  previewAdminEmailSchema,
+  sendAdminEmailSchema,
+  listEmailCampaignsQuerySchema,
+  campaignIdParamSchema,
   listAuditLogsQuerySchema,
 } from "../validators/admin.validator.js";
 import {
@@ -12,7 +17,12 @@ import {
   listAdminUsersHandler,
   getAdminUserDetailsHandler,
   updateAdminUserStatusHandler,
+  updateAdminUserRoleHandler,
   revokeAdminUserSessionsHandler,
+  previewAdminEmailHandler,
+  sendAdminEmailHandler,
+  listEmailCampaignsHandler,
+  getEmailCampaignDetailsHandler,
   listAuditLogsHandler,
 } from "../controllers/admin.controller.js";
 
@@ -25,29 +35,60 @@ adminRouter.get("/overview", getAdminOverviewHandler);
 adminRouter.get(
   "/users",
   validate({ query: listUsersQuerySchema }),
-  listAdminUsersHandler
+  listAdminUsersHandler,
 );
 
 adminRouter.get(
   "/users/:id",
   validate({ params: userIdParamSchema }),
-  getAdminUserDetailsHandler
+  getAdminUserDetailsHandler,
 );
 
 adminRouter.patch(
   "/users/:id/status",
   validate({ params: userIdParamSchema, body: updateUserStatusSchema }),
-  updateAdminUserStatusHandler
+  updateAdminUserStatusHandler,
+);
+
+adminRouter.patch(
+  "/users/:id/role",
+  validate({ params: userIdParamSchema, body: updateUserRoleSchema }),
+  updateAdminUserRoleHandler,
 );
 
 adminRouter.delete(
   "/users/:id/sessions",
   validate({ params: userIdParamSchema }),
-  revokeAdminUserSessionsHandler
+  revokeAdminUserSessionsHandler,
+);
+
+// Admin Email Center & Campaign History
+adminRouter.post(
+  "/emails/preview",
+  validate({ body: previewAdminEmailSchema }),
+  previewAdminEmailHandler,
+);
+
+adminRouter.post(
+  "/emails/send",
+  validate({ body: sendAdminEmailSchema }),
+  sendAdminEmailHandler,
+);
+
+adminRouter.get(
+  "/emails/history",
+  validate({ query: listEmailCampaignsQuerySchema }),
+  listEmailCampaignsHandler,
+);
+
+adminRouter.get(
+  "/emails/history/:id",
+  validate({ params: campaignIdParamSchema }),
+  getEmailCampaignDetailsHandler,
 );
 
 adminRouter.get(
   "/audit-logs",
   validate({ query: listAuditLogsQuerySchema }),
-  listAuditLogsHandler
+  listAuditLogsHandler,
 );

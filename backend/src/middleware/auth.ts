@@ -114,4 +114,6 @@ export function requireRole(...roles: Role[]): RequestHandler {
   };
 }
 
-export const requireAdmin: RequestHandler = requireRole("ADMIN");
+export const requireAdmin: RequestHandler = requireRole("ADMIN", "SUPER_ADMIN");
+export const requireSuperAdmin: RequestHandler = requireRole("SUPER_ADMIN");
+export const requireStaff: RequestHandler = requireRole("EDITOR", "ADMIN", "SUPER_ADMIN");

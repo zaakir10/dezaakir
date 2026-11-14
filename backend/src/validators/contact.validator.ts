@@ -35,6 +35,37 @@ export const UpdateMessageStatusSchema = z.strictObject({
   status: z.enum(MESSAGE_STATUSES),
 });
 
+export const BulkMessagesActionSchema = z
+  .strictObject({
+    action: z.enum(["MARK_READ", "MARK_UNREAD", "MARK_ALL_READ", "DELETE_SELECTED", "DELETE_ALL"]),
+    ids: z
+      .array(z.string().regex(/^[a-f\d]{24}$/i, "Invalid message id"))
+      .min(1)
+      .max(500)
+      .optional(),
+    confirm: z.boolean().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (
+      (data.action === "MARK_READ" || data.action === "MARK_UNREAD" || data.action === "DELETE_SELECTED") &&
+      (!data.ids || data.ids.length === 0)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["ids"],
+        message: "At least one message ID is required for this bulk action",
+      });
+    }
+    if (data.action === "DELETE_ALL" && data.confirm !== true) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["confirm"],
+        message: "Explicit confirmation is required before deleting all messages",
+      });
+    }
+  });
+
 export type ContactSubmissionInput = z.infer<typeof ContactSubmissionSchema>;
 export type ListMessagesQuery = z.infer<typeof ListMessagesQuerySchema>;
 export type UpdateMessageStatusInput = z.infer<typeof UpdateMessageStatusSchema>;
+export type BulkMessagesActionInput = z.infer<typeof BulkMessagesActionSchema>;

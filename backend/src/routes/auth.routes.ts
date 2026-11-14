@@ -3,6 +3,7 @@ import {
   changePasswordHandler,
   forgotPasswordHandler,
   listSessionsHandler,
+  loginActivityHandler,
   loginHandler,
   logoutAllHandler,
   logoutHandler,
@@ -10,10 +11,14 @@ import {
   mfaEnableHandler,
   mfaSetupHandler,
   registerHandler,
+  removeAvatarHandler,
+  requestEmailChangeHandler,
   resendVerificationHandler,
   resetPasswordHandler,
   revokeSessionHandler,
   updateProfileHandler,
+  uploadAvatarHandler,
+  verifyEmailChangeHandler,
   verifyEmailHandler,
 } from "../controllers/auth.controller.js";
 import { requireAuth } from "../middleware/auth.js";
@@ -31,10 +36,13 @@ import {
   LoginSchema,
   MfaVerifySchema,
   RegisterSchema,
+  RequestEmailChangeSchema,
   ResendVerificationSchema,
   ResetPasswordSchema,
   SessionIdParamSchema,
   UpdateProfileSchema,
+  UploadAvatarSchema,
+  VerifyEmailChangeSchema,
   VerifyEmailSchema,
 } from "../validators/auth.validator.js";
 
@@ -57,6 +65,23 @@ authRouter.post("/reset-password", passwordResetLimiter, validate({ body: ResetP
 // Authenticated account & session management routes
 authRouter.get("/me", requireAuth, meHandler);
 authRouter.patch("/me", requireAuth, validate({ body: UpdateProfileSchema }), updateProfileHandler);
+authRouter.post("/avatar", requireAuth, validate({ body: UploadAvatarSchema }), uploadAvatarHandler);
+authRouter.delete("/avatar", requireAuth, removeAvatarHandler);
+authRouter.post(
+  "/change-email/request",
+  requireAuth,
+  otpResendLimiter,
+  validate({ body: RequestEmailChangeSchema }),
+  requestEmailChangeHandler,
+);
+authRouter.post(
+  "/change-email/verify",
+  requireAuth,
+  otpVerifyLimiter,
+  validate({ body: VerifyEmailChangeSchema }),
+  verifyEmailChangeHandler,
+);
+authRouter.get("/login-activity", requireAuth, loginActivityHandler);
 authRouter.post("/change-password", requireAuth, validate({ body: ChangePasswordSchema }), changePasswordHandler);
 authRouter.post("/logout-all", requireAuth, logoutAllHandler);
 authRouter.get("/sessions", requireAuth, listSessionsHandler);

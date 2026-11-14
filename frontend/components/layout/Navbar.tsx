@@ -93,17 +93,17 @@ export function Navbar() {
           {!loading && user ? (
             <>
               <Link
-                href={user.role === "ADMIN" ? "/admin" : "/account"}
+                href={user.role === "ADMIN" || user.role === "SUPER_ADMIN" ? "/admin" : "/account"}
                 className="inline-flex items-center gap-2 bg-white px-4 py-2 text-xs font-bold uppercase tracking-wider text-navy transition hover:bg-white/90"
               >
                 <LayoutDashboard className="h-3.5 w-3.5" />
-                Dashboard
+                {user.role === "ADMIN" || user.role === "SUPER_ADMIN" ? "Dashboard" : "Profile"}
               </Link>
-              {user.role === "ADMIN" && (
+              {(user.role === "ADMIN" || user.role === "SUPER_ADMIN") && (
                 <Link
                   href="/account"
                   className="inline-flex items-center gap-1.5 border border-white/20 px-3 py-2 text-xs font-medium text-white/85 transition hover:border-white hover:text-white"
-                  title="Account Settings"
+                  title="Account Profile"
                 >
                   <UserIcon className="h-3.5 w-3.5" />
                   <span>{user.name.split(" ")[0]}</span>
@@ -186,14 +186,14 @@ export function Navbar() {
             {user ? (
               <div className="flex flex-col gap-2">
                 <Link
-                  href={user.role === "ADMIN" ? "/admin" : "/account"}
+                  href={user.role === "ADMIN" || user.role === "SUPER_ADMIN" ? "/admin" : "/account"}
                   onClick={() => setMobileOpen(false)}
                   className="flex items-center justify-center gap-2 bg-white px-4 py-3 text-xs font-bold uppercase tracking-wider text-navy"
                 >
                   <LayoutDashboard className="h-4 w-4" />
-                  {user.role === "ADMIN" ? "Admin Dashboard" : "Account Dashboard"}
+                  {user.role === "ADMIN" || user.role === "SUPER_ADMIN" ? "Admin Dashboard" : "Account Profile"}
                 </Link>
-                {user.role === "ADMIN" && (
+                {(user.role === "ADMIN" || user.role === "SUPER_ADMIN") && (
                   <Link
                     href="/account"
                     onClick={() => setMobileOpen(false)}

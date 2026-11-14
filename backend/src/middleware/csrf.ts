@@ -1,11 +1,10 @@
 import type { RequestHandler } from "express";
-import { env } from "../config/env.js";
+import { allowedOrigins } from "../config/env.js";
 import { recordAudit } from "../services/audit.service.js";
 import { AppError } from "../utils/AppError.js";
 import { hashToken, safeEqual } from "../utils/crypto.js";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
-const ALLOWED_ORIGIN = new URL(env.FRONTEND_URL).origin;
 
 /**
  * Public unauthenticated entry paths that do not rely on an existing session cookie
@@ -48,7 +47,7 @@ export const csrfProtection: RequestHandler = async (req, _res, next) => {
     const refererHeader = req.get("referer");
     const requestOrigin = extractOrigin(originHeader) ?? extractOrigin(refererHeader);
 
-    if ((originHeader || refererHeader) && requestOrigin !== ALLOWED_ORIGIN) {
+    if ((originHeader || refererHeader) && (!requestOrigin || !allowedOrigins.has(requestOrigin))) {
       await recordAudit({
         category: "SECURITY",
         action: "security.csrf_origin_mismatch",

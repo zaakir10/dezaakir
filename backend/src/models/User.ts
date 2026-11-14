@@ -1,21 +1,37 @@
 import { Schema, model, type HydratedDocument, type Model, type Types } from "mongoose";
 import { baseOptions } from "./shared.js";
 
-export const ROLES = ["USER", "ADMIN"] as const;
+export const ROLES = ["USER", "EDITOR", "ADMIN", "SUPER_ADMIN"] as const;
 export type Role = (typeof ROLES)[number];
 
 /** PENDING = registered but email not verified; SUSPENDED = blocked by an admin. */
 export const USER_STATUSES = ["PENDING", "ACTIVE", "SUSPENDED"] as const;
 export type UserStatus = (typeof USER_STATUSES)[number];
 
+export interface IUserAvatar {
+  url: string;
+  publicId?: string;
+  alt?: string;
+}
+
+export interface IUserPreferences {
+  securityAlerts: boolean;
+  emailNotifications: boolean;
+}
+
 export interface IUser {
   _id: Types.ObjectId;
   name: string;
   email: string;
+  pendingEmail?: string;
   passwordHash: string;
   role: Role;
   emailVerified: boolean;
   status: UserStatus;
+  avatar?: IUserAvatar;
+  bio?: string;
+  location?: string;
+  preferences: IUserPreferences;
   lastLoginAt?: Date;
   passwordChangedAt?: Date;
   failedLoginCount: number;
@@ -45,12 +61,30 @@ const UserSchema = new Schema<IUser>(
       maxlength: 254,
       match: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
     },
+    pendingEmail: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      maxlength: 254,
+      match: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+    },
     passwordHash: { type: String, required: true, select: false },
-    // Always defaults to USER. No public endpoint accepts `role`; ADMIN is only
-    // granted through the CLI bootstrap command (`bun run create-admin`).
+    // Always defaults to USER on public registration. Privileged roles are only
+    // granted through the CLI bootstrap command or authorized Admin RBAC endpoints.
     role: { type: String, enum: ROLES, default: "USER", required: true },
     emailVerified: { type: Boolean, default: false, required: true },
     status: { type: String, enum: USER_STATUSES, default: "PENDING", required: true },
+    avatar: {
+      url: { type: String, trim: true, maxlength: 500000 },
+      publicId: { type: String, trim: true, maxlength: 240 },
+      alt: { type: String, trim: true, maxlength: 160 },
+    },
+    bio: { type: String, trim: true, maxlength: 500, default: "" },
+    location: { type: String, trim: true, maxlength: 100, default: "" },
+    preferences: {
+      securityAlerts: { type: Boolean, default: true },
+      emailNotifications: { type: Boolean, default: true },
+    },
     lastLoginAt: { type: Date },
     passwordChangedAt: { type: Date },
     failedLoginCount: { type: Number, default: 0, min: 0, select: false },

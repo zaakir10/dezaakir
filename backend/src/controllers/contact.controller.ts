@@ -1,5 +1,6 @@
 import type { RequestHandler } from "express";
 import {
+  bulkContactMessagesAction,
   deleteContactMessage,
   listContactMessages,
   submitContactMessage,
@@ -7,6 +8,7 @@ import {
 } from "../services/contact.service.js";
 import { sendSuccess } from "../utils/apiResponse.js";
 import type {
+  BulkMessagesActionInput,
   ContactSubmissionInput,
   ListMessagesQuery,
   UpdateMessageStatusInput,
@@ -20,8 +22,8 @@ export const submitContactHandler: RequestHandler = async (req, res) => {
 export const listMessagesHandler: RequestHandler = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   const query = (req.validatedQuery ?? {}) as ListMessagesQuery;
-  const { messages, meta } = await listContactMessages(query);
-  sendSuccess(res, { messages }, 200, meta);
+  const { messages, counts, meta } = await listContactMessages(query);
+  sendSuccess(res, { messages, counts }, 200, meta);
 };
 
 export const updateMessageStatusHandler: RequestHandler = async (req, res) => {
@@ -37,5 +39,11 @@ export const updateMessageStatusHandler: RequestHandler = async (req, res) => {
 export const deleteMessageHandler: RequestHandler = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   const result = await deleteContactMessage(String(req.params.id), req);
+  sendSuccess(res, result);
+};
+
+export const bulkMessagesHandler: RequestHandler = async (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  const result = await bulkContactMessagesAction(req.body as BulkMessagesActionInput, req);
   sendSuccess(res, result);
 };
