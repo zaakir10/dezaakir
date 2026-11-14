@@ -134,3 +134,5 @@ export function createApp() {
 
   return app;
 }
+
+export default createApp();
